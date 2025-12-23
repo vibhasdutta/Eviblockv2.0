@@ -178,8 +178,8 @@ KYC Form → Upload → IPFS → Q&A Generation (Async) → Video Verification �
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/evilblock.git
-   cd evilblock
+   git clone https://github.com/yourusername/Eviblockv2.0.git
+   cd Eviblockv2.0
    ```
 
 2. **Install dependencies**
