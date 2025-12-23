@@ -1,0 +1,46 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user owns the file
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Helper function to validate video file
+    function isValidVideo() {
+      return request.resource.size <= 50 * 1024 * 1024  // 50MB max
+        && request.resource.contentType.matches('video/.*');
+    }
+    
+    
+    // Users video storage rules
+    match /users/{userId}/videos/{videoFileName} {
+      // Allow users to read their own videos
+      allow read: if isOwner(userId);
+      
+      // Allow users to upload video during KYC verification
+      // Enforce video validation and naming convention
+      allow create: if isOwner(userId)
+        && isValidVideo()
+        && videoFileName.matches('video-verification-[0-9]+\\.webm');
+      
+      // Prevent updates to uploaded videos
+      allow update: if false;
+      
+      // Prevent deletion of verification videos
+      allow delete: if false;
+    }
+    
+    // Deny all other access by default
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,80 @@
+type FileRecord = record {
+    id : nat64;
+    name : text;
+    uid : text;
+    date : text;
+    file_type : text;
+    file_size : nat64;
+    cid : text;
+    timestamp : nat64;
+    kyc_detail : text;
+    document_type : text;
+};
+
+type VerificationLog = record {
+    id : nat64;
+    file_id : nat64;
+    cid : text;
+    verifier_uid : text;
+    verifier_name : text;
+    timestamp : nat64;
+};
+
+type VideoVerificationRecord = record {
+    id : nat64;
+    uid : text;
+    video_hash : text;
+    firestore_doc_id : text;
+    document_cid : text;
+    timestamp : nat64;
+};
+
+type Result = variant {
+    Ok : FileRecord;
+    Err : text;
+};
+
+type VerificationLogResult = variant {
+    Ok : VerificationLog;
+    Err : text;
+};
+
+type VideoVerificationResult = variant {
+    Ok : VideoVerificationRecord;
+    Err : text;
+};
+
+type DeleteResult = variant {
+    Ok : text;
+    Err : text;
+};
+
+service : {
+    // Store document metadata on blockchain
+    "store_document_metadata": (text, text, text, text, nat64, text, text, text) -> (Result);
+    
+    // Query functions
+    "get_documents_by_uid": (text) -> (vec FileRecord) query;
+    "get_all_documents": () -> (vec FileRecord) query;
+    "get_total_documents": () -> (nat64) query;
+    "get_document_by_cid": (text) -> (Result) query;
+    
+    // Verify document by CID
+    "verify_document": (text) -> (Result) query;
+    
+    // Verification logging
+    "log_document_verification": (text, text, text) -> (VerificationLogResult);
+    "get_verification_logs_by_cid": (text) -> (vec VerificationLog) query;
+    "get_verification_logs_by_document_id": (nat64) -> (vec VerificationLog) query;
+    
+    // Video verification functions
+    "store_video_verification": (text, text, text) -> (VideoVerificationResult);
+    "link_video_to_document": (nat64, text) -> (VideoVerificationResult);
+    "get_videos_by_uid": (text) -> (vec VideoVerificationRecord) query;
+    "get_video_by_firestore_id": (text) -> (opt VideoVerificationRecord) query;
+    "get_video_by_hash": (text) -> (opt VideoVerificationRecord) query;
+    "get_video_by_document_cid": (text) -> (opt VideoVerificationRecord) query;
+    
+    // Admin function
+    "delete_document": (nat64) -> (DeleteResult);
+}

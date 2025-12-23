@@ -1,0 +1,34 @@
+{
+  "canisters": {
+    "evilblock_backend": {
+      "type": "rust",
+      "package": "evilblock_backend",
+      "candid": "src/evilblock_backend/evilblock_backend.did",
+      "build": "cargo build --target wasm32-unknown-unknown --release --package evilblock_backend",
+      "wasm": "target/wasm32-unknown-unknown/release/evilblock_backend.wasm"
+    },
+    "evilblock_frontend": {
+      "type": "assets",
+      "dependencies": [
+        "evilblock_backend"
+      ],
+      "source": [
+        "src/evilblock_frontend/assets"
+      ]
+    }
+  },
+  "defaults": {
+    "build": {
+      "args": "",
+      "packtool": ""
+    }
+  },
+  "networks": {
+    "local": {
+      "bind": "127.0.0.1:4943",
+      "type": "ephemeral"
+    }
+  },
+  "output_env_file": ".env",
+  "version": 1
+}
