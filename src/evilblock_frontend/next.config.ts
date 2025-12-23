@@ -9,7 +9,7 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: https: blob:",
       "font-src 'self' data: https://fonts.gstatic.com",
-      "connect-src 'self' data: blob: https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.pinata.cloud https://api.pinata.cloud https://*.icp0.io http://localhost:4943 http://127.0.0.1:4943",
+      "connect-src 'self' data: blob: https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.pinata.cloud https://api.pinata.cloud https://*.icp0.io http://localhost:4943 http://127.0.0.1:4943 http://localhost:9000 https://*.ngrok-free.app https://*.ngrok.io",
       "media-src 'self' https://firebasestorage.googleapis.com https://*.firebasestorage.googleapis.com blob:",
       "frame-ancestors 'none'",
     ].join('; ')

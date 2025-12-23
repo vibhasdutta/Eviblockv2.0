@@ -1,0 +1,13 @@
+{
+    "name": "qa-api-test",
+    "version": "1.0.0",
+    "description": "Test script for Q&A generation API",
+    "scripts": {
+        "test:qa": "node test-qa-api.js",
+        "test:qa:custom": "node test-qa-api.js"
+    },
+    "dependencies": {
+        "form-data": "^4.0.0",
+        "node-fetch": "^2.7.0"
+    }
+}

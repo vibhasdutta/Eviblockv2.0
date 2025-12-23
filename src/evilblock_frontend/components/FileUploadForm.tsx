@@ -142,65 +142,118 @@ export default function FileUploadForm({ uid, onSuccess, storeOnly = false }: Fi
     */ // END OF DISABLED BROKEN CODE - USE CORRECT PATH BELOW
 
     try {
-      // Stage 1: Upload to IPFS (Pinata)
-      setStatus({
-        stage: "uploading",
-        message: "Uploading to IPFS...",
-      });
-
-      const ipfsResult = await uploadToPinata(file);
-      if (!ipfsResult.success) {
-        throw new Error(ipfsResult.error || 'IPFS upload failed');
-      }
-
-      const ipfsCID = ipfsResult.hash;
-
-      // Stage 2: Check if file already exists
-      setStatus({
-        stage: "uploading",
-        message: "Checking for duplicate files...",
-      });
-
-      const fileExists = await checkDocumentExists(ipfsCID);
-      if (fileExists) {
-        throw new Error(`File with CID '${ipfsCID}' already exists. You can verify it using the verification tool.`);
-      }
-
-      // Stage 3.5: Handle KYC data based on document type
+      // Stage 1: Determine document type and handle accordingly
       const documentType = sessionStorage.getItem('documentType') || 'simple';
+      let ipfsCID = '';
+
+      if (documentType === 'legal') {
+        // Legal documents: Store file locally, skip Pinata upload
+        console.log('📋 Legal document detected - storing locally for verification');
+
+        setStatus({
+          stage: "uploading",
+          message: "Saving document locally...",
+        });
+
+        const { storeFileInIndexedDB } = await import('@/lib/fileStorage');
+        await storeFileInIndexedDB(file);
+
+        // Store file metadata for later upload
+        sessionStorage.setItem('pendingFileUpload', JSON.stringify({
+          fileName: file.name,
+          fileType: file.type || "application/octet-stream",
+          fileSize: file.size,
+        }));
+
+        // Generate a temporary placeholder CID for encryption
+        ipfsCID = `pending_${Date.now()}_${file.name}`;
+
+        console.log('✅ File stored locally, will upload to IPFS after questions');
+      } else {
+        // Evidence & Simple: Upload to Pinata immediately (unchanged)
+        console.log('📋 Evidence/Simple document - uploading to IPFS');
+
+        setStatus({
+          stage: "uploading",
+          message: "Uploading to IPFS...",
+        });
+
+        const ipfsResult = await uploadToPinata(file);
+        if (!ipfsResult.success) {
+          throw new Error(ipfsResult.error || 'IPFS upload failed');
+        }
+
+        ipfsCID = ipfsResult.hash;
+
+        // Check if file already exists
+        setStatus({
+          stage: "uploading",
+          message: "Checking for duplicate files...",
+        });
+
+        const fileExists = await checkDocumentExists(ipfsCID);
+        if (fileExists) {
+          throw new Error(`File with CID '${ipfsCID}' already exists. You can verify it using the verification tool.`);
+        }
+      }
+
+      // Stage 2: Handle KYC data
       let encryptedKycData = '';
 
-      // All document types need KYC encryption (simple has mini-KYC, others have full KYC)
-      setStatus({
-        stage: "storing",
-        message: "Encrypting KYC data...",
-      });
+      if (documentType === 'legal') {
+        // Legal documents: Skip encryption here (no real CID yet)
+        // Encryption will happen after IPFS upload in questions page
+        console.log('⏭️ Skipping KYC encryption for legal document (will encrypt after IPFS upload)');
 
-      const kycData = await getKycDataFromSession();
-      if (!kycData) {
-        throw new Error('KYC data not found. Please complete the KYC form first.');
+        // Store unencrypted KYC data temporarily for legal documents
+        const kycData = await getKycDataFromSession();
+        if (!kycData) {
+          throw new Error('KYC data not found. Please complete the KYC form first.');
+        }
+
+        // Store as JSON string temporarily
+        encryptedKycData = JSON.stringify(kycData);
+      } else {
+        // Evidence & Simple: Encrypt KYC data now (we have real CID)
+        setStatus({
+          stage: "storing",
+          message: "Encrypting KYC data...",
+        });
+
+        const kycData = await getKycDataFromSession();
+        if (!kycData) {
+          throw new Error('KYC data not found. Please complete the KYC form first.');
+        }
+
+        // Encrypt KYC data using UID + CID as the key
+        encryptedKycData = await encryptKycData(kycData, uid, ipfsCID);
       }
-
-      // Encrypt KYC data using UID + CID as the key
-      encryptedKycData = await encryptKycData(kycData, uid, ipfsCID);
 
       // Stage 4: Handle blockchain upload based on storeOnly flag
       const currentDate = new Date().toISOString().split("T")[0];
 
       if (storeOnly) {
         // Legal/Evidence: Store locally for later finalization
+        console.log('📋 Document Type:', documentType);
+        console.log('🔍 storeOnly mode - checking for legal document...');
 
         // For legal documents, trigger Q&A generation in background (non-blocking)
         if (documentType === 'legal') {
+          console.log('✅ Legal document detected - starting Q&A generation');
+
           toast({
             title: "Processing Document",
-            description: "Generating security questions in the background...",
+            description: "Generating security questions from your document. This may take up to 2 minutes...",
+            duration: 5000,
           });
 
           // Fire-and-forget: Start Q&A generation without waiting
           (async () => {
             try {
+              console.log('🚀 Starting Q&A generation async function...');
               const { generateQuestions, storeGeneratedQuestions } = await import('@/lib/qaApi');
+              console.log('📦 Imported Q&A functions');
+
               const generatedQuestions = await generateQuestions(file, 5);
 
               if (generatedQuestions && generatedQuestions.length > 0) {
@@ -210,9 +263,11 @@ export default function FileUploadForm({ uid, onSuccess, storeOnly = false }: Fi
                 console.warn('⚠️ Q&A generation failed, will use default questions');
               }
             } catch (error) {
-              console.error('Q&A generation error:', error);
+              console.error('❌ Q&A generation error:', error);
             }
           })();
+        } else {
+          console.log('ℹ️ Not a legal document, skipping Q&A generation. Type:', documentType);
         }
 
         sessionStorage.setItem('pendingDocument', JSON.stringify({
@@ -226,13 +281,17 @@ export default function FileUploadForm({ uid, onSuccess, storeOnly = false }: Fi
 
         setStatus({
           stage: "success",
-          message: "File uploaded to IPFS. Complete verification to finalize.",
+          message: documentType === 'legal'
+            ? "File saved locally. Complete verification to upload to IPFS."
+            : "File uploaded to IPFS. Complete verification to finalize.",
           cid: ipfsCID,
         });
 
         toast({
           title: "Upload Successful",
-          description: `File "${file.name}" uploaded. Continue to video verification.`,
+          description: documentType === 'legal'
+            ? `File "${file.name}" saved locally. Continue to video verification.`
+            : `File "${file.name}" uploaded. Continue to video verification.`,
           variant: "success",
         });
       } else {

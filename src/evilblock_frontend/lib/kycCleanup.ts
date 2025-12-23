@@ -35,7 +35,15 @@ export async function clearAllKycData(): Promise<void> {
         console.error('Failed to clear IndexedDB:', error);
     }
 
-    // 4. Clear KYC step cookies
+    // 4. Clear file storage IndexedDB
+    try {
+        const { clearFileFromIndexedDB } = await import('./fileStorage');
+        await clearFileFromIndexedDB();
+    } catch (error) {
+        console.error('Failed to clear file storage:', error);
+    }
+
+    // 5. Clear KYC step cookies
     const cookiesToClear = ['kyc_step_1', 'kyc_step_2', 'kyc_step_3'];
     cookiesToClear.forEach(cookie => {
         document.cookie = `${cookie}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
@@ -50,6 +58,7 @@ export async function clearAllKycData(): Promise<void> {
 export const KYC_SESSION_KEYS = [
     'documentStored',
     'pendingDocument',
+    'pendingFileUpload', // File metadata for deferred IPFS upload
     'videoVerification',
     'verificationAnswers',
     'documentUploaded',
@@ -76,6 +85,7 @@ export function setupUnloadCleanup(): () => void {
         const sessionKeys = [
             'documentStored',
             'pendingDocument',
+            'pendingFileUpload', // File metadata for deferred IPFS upload
             'videoVerification',
             'verificationAnswers',
             'kycFormData',

@@ -140,7 +140,83 @@ export default function QuestionsPage() {
       // Store answers in sessionStorage
       sessionStorage.setItem('verificationAnswers', JSON.stringify(answers));
 
-      // Retrieve stored document and perform final upload
+      // Check if we need to upload to IPFS first (legal documents)
+      const pendingFileUpload = sessionStorage.getItem('pendingFileUpload');
+      let finalCID = '';
+
+      if (pendingFileUpload) {
+        // Legal document: Upload to IPFS after successful answers
+        toast({
+          title: "Uploading Document",
+          description: "Uploading to IPFS. This may take a moment...",
+        });
+
+        // Retrieve file from IndexedDB
+        const { getFileFromIndexedDB } = await import('@/lib/fileStorage');
+        const file = await getFileFromIndexedDB();
+
+        const fileMetadata = JSON.parse(pendingFileUpload);
+        console.log('📤 Uploading file to IPFS:', fileMetadata.fileName);
+
+        // Upload to Pinata
+        const { uploadToPinata } = await import('@/lib/ipfs');
+        const ipfsResult = await uploadToPinata(file);
+
+        if (!ipfsResult.success) {
+          throw new Error(ipfsResult.error || 'IPFS upload failed');
+        }
+
+        finalCID = ipfsResult.hash;
+        console.log('✅ File uploaded to IPFS:', finalCID);
+
+        // Clean up file from IndexedDB
+        const { clearFileFromIndexedDB } = await import('@/lib/fileStorage');
+        await clearFileFromIndexedDB();
+
+        // Encrypt KYC data with real CID now that we have it
+        toast({
+          title: "Encrypting Data",
+          description: "Encrypting KYC information...",
+        });
+
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
+          throw new Error('User not authenticated');
+        }
+
+        // Get unencrypted KYC data from pending document
+        const pendingDoc = sessionStorage.getItem('pendingDocument');
+        if (!pendingDoc) {
+          throw new Error('No document found');
+        }
+
+        const docData = JSON.parse(pendingDoc);
+        const unencryptedKycData = JSON.parse(docData.kyc_detail); // This was stored as JSON string
+
+        // Encrypt with real CID
+        const { encryptKycData } = await import('@/lib/encryption');
+        const encryptedKycData = await encryptKycData(unencryptedKycData, currentUser.uid, finalCID);
+
+        // Update pending document with encrypted data
+        docData.kyc_detail = encryptedKycData;
+        docData.cid = finalCID;
+        sessionStorage.setItem('pendingDocument', JSON.stringify(docData));
+
+        toast({
+          title: "Upload Complete",
+          description: "Document uploaded and encrypted successfully!",
+        });
+      } else {
+        // Evidence document: File already uploaded, get CID
+        const pendingDocument = sessionStorage.getItem('pendingDocument');
+        if (!pendingDocument) {
+          throw new Error('No document found for upload');
+        }
+        const fileData = JSON.parse(pendingDocument);
+        finalCID = fileData.cid;
+      }
+
+      // Retrieve stored document metadata
       const pendingDocument = sessionStorage.getItem('pendingDocument');
       if (!pendingDocument) {
         throw new Error('No document found for upload');
@@ -148,10 +224,15 @@ export default function QuestionsPage() {
 
       const fileData = JSON.parse(pendingDocument);
 
+      // Update fileData with real CID if it was pending
+      if (fileData.cid.startsWith('pending_')) {
+        fileData.cid = finalCID;
+      }
+
       // Import canister functions
       const { storeDocumentMetadata, linkVideoToDocument, storeVideoVerification } = await import('@/lib/canister');
 
-      // Stage 1: Store metadata on blockchain (using pre-uploaded data)
+      // Stage 1: Store metadata on blockchain (using IPFS CID)
       const currentUser = auth.currentUser;
       if (!currentUser) {
         throw new Error('User not authenticated');
@@ -349,11 +430,28 @@ export default function QuestionsPage() {
           </CardHeader>
           <CardContent className="space-y-6">
             {shuffledQuestions.map((question, index) => (
-              <div key={question.id} className="space-y-2">
-                <Label htmlFor={question.id} className="text-base font-medium">
-                  {index + 1}. {question.question}
-                  {question.required && <span className="text-red-500 ml-1">*</span>}
-                </Label>
+              <div key={question.id} className="space-y-3 pb-6 border-b last:border-0">
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0 mt-1">
+                    <HelpCircle className="size-5 text-primary" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Label htmlFor={question.id} className="text-base font-medium">
+                        {index + 1}. {question.question}
+                      </Label>
+                      {question.type === 'boolean' ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 border border-green-200 dark:border-green-800">
+                          True/False
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                          Q&A
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
 
                 {question.type === 'text' ? (
                   <Input
@@ -361,12 +459,12 @@ export default function QuestionsPage() {
                     type="text"
                     value={answers[question.id] || ''}
                     onChange={(e) => handleAnswerChange(question.id, e.target.value)}
-                    placeholder={question.placeholder}
-                    required={question.required}
+                    placeholder={question.placeholder || 'Enter your answer'}
                     className="w-full"
+                    required={question.required}
                   />
-                ) : question.type === 'boolean' ? (
-                  <div className="flex gap-6 mt-2">
+                ) : question.type === 'boolean' && question.options ? (
+                  <div className="flex gap-4 ml-8">
                     {question.options?.map((option) => (
                       <label key={option} className="flex items-center gap-2 cursor-pointer">
                         <input

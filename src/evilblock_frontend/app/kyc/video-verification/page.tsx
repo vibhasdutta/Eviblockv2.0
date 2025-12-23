@@ -310,203 +310,219 @@ export default function VideoVerificationPage() {
       });
 
       const indexedDB = window.indexedDB || (window as any).webkitIndexedDB;
-      const request = indexedDB.open('evilblock-kyc', 1);
 
-      request.onerror = () => {
-        throw new Error('Failed to open IndexedDB');
-      };
+      if (!indexedDB) {
+        throw new Error('IndexedDB is not supported in your browser');
+      }
 
-      request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        if (!db.objectStoreNames.contains('videoVerification')) {
-          db.createObjectStore('videoVerification');
-        }
-      };
+      // Wrap IndexedDB operations in Promise for proper error handling
+      await new Promise<void>((resolve, reject) => {
+        const request = indexedDB.open('evilblock-kyc', 1);
 
-      request.onsuccess = () => {
-        const db = request.result;
-        const transaction = db.transaction('videoVerification', 'readwrite');
-        const store = transaction.objectStore('videoVerification');
-
-        const fileName = `video-verification-${Date.now()}.webm`;
-        const videoMetadata = {
-          videoHash,
-          recordedAt: recordedVideo.recordedAt,
-          videoSize: recordedVideo.videoBlob!.size,
-          fileName,
+        request.onerror = () => {
+          console.error('IndexedDB error:', request.error);
+          reject(new Error(`Failed to open IndexedDB: ${request.error?.message || 'Unknown error'}`));
         };
 
-        store.put({
-          videoBlob: recordedVideo.videoBlob, // Store as blob directly
-          ...videoMetadata,
-        }, 'current');
-
-        // Also store metadata in sessionStorage for the questions page
-        sessionStorage.setItem('videoVerification', JSON.stringify(videoMetadata));
-
-        transaction.oncomplete = async () => {
-          // Set KYC step 3 cookie for middleware protection
-          document.cookie = `kyc_step_3=completed; path=/; max-age=3600; SameSite=Strict`;
-
-          const documentType = sessionStorage.getItem('documentType');
-
-          if (documentType === 'evidence') {
-            // Evidence type skips questions - finalize upload here
-            toast({
-              title: "Processing Evidence",
-              description: "Uploading to blockchain and Firebase...",
-            });
-
-            try {
-              // Import necessary functions
-              const { storeDocumentMetadata, storeVideoVerification, linkVideoToDocument } = await import('@/lib/canister');
-              const { getStorage, ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
-
-
-              // Get pending document from session
-              const pendingDocJson = sessionStorage.getItem('pendingDocument');
-              if (!pendingDocJson) {
-                throw new Error('No pending document found');
-              }
-              const pendingDoc = JSON.parse(pendingDocJson);
-
-              // Use pre-encrypted KYC data from upload step
-              const encryptedKycData = pendingDoc.kyc_detail;
-              if (!encryptedKycData) {
-                // Fallback re-encryption (safety check)
-                const { encryptKycData } = await import('@/lib/encryption');
-                const { getSecure } = await import('@/lib/secureStorage');
-                const kycData = await getSecure('kycFormData');
-                if (!kycData) throw new Error('KYC data not found/expired');
-                // This path requires re-importing which is fine for fallback
-              }
-
-              // Upload to blockchain
-              const currentDate = new Date().toISOString().split("T")[0];
-              await storeDocumentMetadata({
-                name: pendingDoc.name,
-                uid: currentUser.uid,
-                date: currentDate,
-                file_type: pendingDoc.file_type,
-                file_size: pendingDoc.file_size,
-                cid: pendingDoc.cid,
-                kyc_detail: encryptedKycData || "", // Should be there
-                document_type: 'evidence',
-              });
-
-              // Get video metadata from sessionStorage (same as Legal)
-              const videoVerificationData = sessionStorage.getItem('videoVerification');
-              if (!videoVerificationData) {
-                throw new Error('No video verification data found');
-              }
-              const videoData = JSON.parse(videoVerificationData);
-
-              // Get video blob from IndexedDB
-              const indexedDB = window.indexedDB || (window as any).webkitIndexedDB;
-              const dbRequest = indexedDB.open('evilblock-kyc', 1);
-
-              const videoBlob: Blob = await new Promise((resolve, reject) => {
-                dbRequest.onsuccess = () => {
-                  const indexedDbInstance = dbRequest.result;
-                  const transaction = indexedDbInstance.transaction('videoVerification', 'readonly');
-                  const store = transaction.objectStore('videoVerification');
-                  const getRequest = store.get('current'); // Use 'current' key as it's used for storing
-
-                  getRequest.onsuccess = () => {
-                    if (getRequest.result && getRequest.result.videoBlob) {
-                      resolve(getRequest.result.videoBlob);
-                    } else {
-                      reject(new Error('Video not found in database'));
-                    }
-                  };
-
-                  getRequest.onerror = () => reject(new Error('Failed to retrieve video'));
-                };
-
-                dbRequest.onerror = () => reject(new Error('Failed to open database'));
-              });
-
-              // Upload video to Firebase Storage (same path and fileName as Legal)
-              const storage = getStorage();
-
-              // SECURITY: Verify video hash before uploading to Firebase
-              // This prevents attackers from swapping the video blob before upload
-              const videoArrayBuffer = await videoBlob.arrayBuffer();
-              const videoHashBuffer = await crypto.subtle.digest('SHA-256', videoArrayBuffer);
-              const videoHashArray = Array.from(new Uint8Array(videoHashBuffer));
-              const currentVideoHash = videoHashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-
-              // Compare with stored hash
-              if (currentVideoHash !== videoData.videoHash) {
-                throw new Error('Video integrity check failed! The video has been modified or swapped. Security violation detected.');
-              }
-
-              const storageRef = ref(storage, `users/${currentUser.uid}/videos/${videoData.fileName}`);
-              await uploadBytes(storageRef, videoBlob);
-              const videoUrl = await getDownloadURL(storageRef);
-
-              // Store video metadata in Firestore (same as Legal flow - with ALL fields)
-              const { db: firestoreDb } = await import('@/lib/firebase/config');
-              const videoProofRef = collection(firestoreDb, 'users', currentUser.uid, 'videoProof');
-              const videoProofDoc = await addDoc(videoProofRef, {
-                videoUrl,
-                videoHash: videoData.videoHash,
-                timestamp: new Date().toISOString(),
-                documentCid: pendingDoc.cid,
-                fileName: videoData.fileName,
-                fileSize: videoData.videoSize,
-              });
-
-              // Store video verification on blockchain  
-              const vidVerification = await storeVideoVerification(currentUser.uid, videoData.videoHash, videoProofDoc.id);
-
-              // Link video to document on blockchain (same as Legal)
-              await linkVideoToDocument(Number(vidVerification.id), pendingDoc.cid);
-
-              toast({
-                title: "Upload Complete",
-                description: "Evidence uploaded successfully!",
-              });
-
-              // Clear ALL sensitive KYC data after successful completion
-              const { clearKycDataOnSuccess } = await import('@/lib/kycCleanup');
-              await clearKycDataOnSuccess();
-
-              // Clean up and redirect
-              setTimeout(() => {
-                router.push("/dashboard");
-              }, 1500);
-
-            } catch (error) {
-              console.error("Evidence finalization error:", error);
-              toast({
-                title: "Upload Failed",
-                description: error instanceof Error ? error.message : "Failed to finalize upload",
-                variant: "destructive",
-              });
-            }
-          } else {
-            // Legal type continues to questions
-            toast({
-              title: "Video Recorded",
-              description: "Video saved locally. Will be uploaded after document verification.",
-            });
-
-            setTimeout(() => {
-              router.push("/kyc/questions");
-            }, 1500);
+        request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
+          const db = (event.target as IDBOpenDBRequest).result;
+          if (!db.objectStoreNames.contains('videoVerification')) {
+            db.createObjectStore('videoVerification');
           }
         };
 
-        transaction.onerror = () => {
-          throw new Error('Failed to save video to IndexedDB');
+        request.onsuccess = () => {
+          try {
+            const db = request.result;
+            const transaction = db.transaction('videoVerification', 'readwrite');
+            const store = transaction.objectStore('videoVerification');
+
+            const fileName = `video-verification-${Date.now()}.webm`;
+            const videoMetadata = {
+              videoHash,
+              recordedAt: recordedVideo.recordedAt,
+              videoSize: recordedVideo.videoBlob!.size,
+              fileName,
+            };
+
+            store.put({
+              videoBlob: recordedVideo.videoBlob,
+              ...videoMetadata,
+            }, 'current');
+
+            // Also store metadata in sessionStorage for the questions page
+            sessionStorage.setItem('videoVerification', JSON.stringify(videoMetadata));
+
+            transaction.oncomplete = async () => {
+              // Set KYC step 3 cookie for middleware protection
+              document.cookie = `kyc_step_3=completed; path=/; max-age=3600; SameSite=Strict`;
+
+              const documentType = sessionStorage.getItem('documentType');
+
+              if (documentType === 'evidence') {
+                // Evidence type skips questions - finalize upload here
+                toast({
+                  title: "Processing Evidence",
+                  description: "Uploading to blockchain and Firebase...",
+                });
+
+                try {
+                  // Import necessary functions
+                  const { storeDocumentMetadata, storeVideoVerification, linkVideoToDocument } = await import('@/lib/canister');
+                  const { getStorage, ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+
+
+                  // Get pending document from session
+                  const pendingDocJson = sessionStorage.getItem('pendingDocument');
+                  if (!pendingDocJson) {
+                    throw new Error('No pending document found');
+                  }
+                  const pendingDoc = JSON.parse(pendingDocJson);
+
+                  // Use pre-encrypted KYC data from upload step
+                  const encryptedKycData = pendingDoc.kyc_detail;
+                  if (!encryptedKycData) {
+                    // Fallback re-encryption (safety check)
+                    const { encryptKycData } = await import('@/lib/encryption');
+                    const { getSecure } = await import('@/lib/secureStorage');
+                    const kycData = await getSecure('kycFormData');
+                    if (!kycData) throw new Error('KYC data not found/expired');
+                    // This path requires re-importing which is fine for fallback
+                  }
+
+                  // Upload to blockchain
+                  const currentDate = new Date().toISOString().split("T")[0];
+                  await storeDocumentMetadata({
+                    name: pendingDoc.name,
+                    uid: currentUser.uid,
+                    date: currentDate,
+                    file_type: pendingDoc.file_type,
+                    file_size: pendingDoc.file_size,
+                    cid: pendingDoc.cid,
+                    kyc_detail: encryptedKycData || "", // Should be there
+                    document_type: 'evidence',
+                  });
+
+                  // Get video metadata from sessionStorage (same as Legal)
+                  const videoVerificationData = sessionStorage.getItem('videoVerification');
+                  if (!videoVerificationData) {
+                    throw new Error('No video verification data found');
+                  }
+                  const videoData = JSON.parse(videoVerificationData);
+
+                  // Get video blob from IndexedDB
+                  const indexedDB = window.indexedDB || (window as any).webkitIndexedDB;
+                  const dbRequest = indexedDB.open('evilblock-kyc', 1);
+
+                  const videoBlob: Blob = await new Promise((resolve, reject) => {
+                    dbRequest.onsuccess = () => {
+                      const indexedDbInstance = dbRequest.result;
+                      const transaction = indexedDbInstance.transaction('videoVerification', 'readonly');
+                      const store = transaction.objectStore('videoVerification');
+                      const getRequest = store.get('current'); // Use 'current' key as it's used for storing
+
+                      getRequest.onsuccess = () => {
+                        if (getRequest.result && getRequest.result.videoBlob) {
+                          resolve(getRequest.result.videoBlob);
+                        } else {
+                          reject(new Error('Video not found in database'));
+                        }
+                      };
+
+                      getRequest.onerror = () => reject(new Error('Failed to retrieve video'));
+                    };
+
+                    dbRequest.onerror = () => reject(new Error('Failed to open database'));
+                  });
+
+                  // Upload video to Firebase Storage (same path and fileName as Legal)
+                  const storage = getStorage();
+
+                  // SECURITY: Verify video hash before uploading to Firebase
+                  // This prevents attackers from swapping the video blob before upload
+                  const videoArrayBuffer = await videoBlob.arrayBuffer();
+                  const videoHashBuffer = await crypto.subtle.digest('SHA-256', videoArrayBuffer);
+                  const videoHashArray = Array.from(new Uint8Array(videoHashBuffer));
+                  const currentVideoHash = videoHashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+                  // Compare with stored hash
+                  if (currentVideoHash !== videoData.videoHash) {
+                    throw new Error('Video integrity check failed! The video has been modified or swapped. Security violation detected.');
+                  }
+
+                  const storageRef = ref(storage, `users/${currentUser.uid}/videos/${videoData.fileName}`);
+                  await uploadBytes(storageRef, videoBlob);
+                  const videoUrl = await getDownloadURL(storageRef);
+
+                  // Store video metadata in Firestore (same as Legal flow - with ALL fields)
+                  const { db: firestoreDb } = await import('@/lib/firebase/config');
+                  const videoProofRef = collection(firestoreDb, 'users', currentUser.uid, 'videoProof');
+                  const videoProofDoc = await addDoc(videoProofRef, {
+                    videoUrl,
+                    videoHash: videoData.videoHash,
+                    timestamp: new Date().toISOString(),
+                    documentCid: pendingDoc.cid,
+                    fileName: videoData.fileName,
+                    fileSize: videoData.videoSize,
+                  });
+
+                  // Store video verification on blockchain  
+                  const vidVerification = await storeVideoVerification(currentUser.uid, videoData.videoHash, videoProofDoc.id);
+
+                  // Link video to document on blockchain (same as Legal)
+                  await linkVideoToDocument(Number(vidVerification.id), pendingDoc.cid);
+
+                  toast({
+                    title: "Upload Complete",
+                    description: "Evidence uploaded successfully!",
+                  });
+
+                  // Clear ALL sensitive KYC data after successful completion
+                  const { clearKycDataOnSuccess } = await import('@/lib/kycCleanup');
+                  await clearKycDataOnSuccess();
+
+                  // Clean up and redirect
+                  setTimeout(() => {
+                    router.push("/dashboard");
+                    resolve(); // Resolve the promise on success
+                  }, 1500);
+
+                } catch (error) {
+                  console.error("Evidence finalization error:", error);
+                  toast({
+                    title: "Upload Failed",
+                    description: error instanceof Error ? error.message : "Failed to finalize upload",
+                    variant: "destructive",
+                  });
+                  reject(error instanceof Error ? error : new Error('Evidence upload failed'));
+                }
+              } else {
+                // Legal type continues to questions
+                toast({
+                  title: "Video Recorded",
+                  description: "Video saved locally. Will be uploaded after document verification.",
+                });
+
+                setTimeout(() => {
+                  router.push("/kyc/questions");
+                  resolve(); // Resolve the promise on success
+                }, 1500);
+              }
+            };
+
+            transaction.onerror = () => {
+              reject(new Error('Failed to save video to IndexedDB'));
+            };
+          } catch (err) {
+            reject(err instanceof Error ? err : new Error('Unknown error'));
+          }
         };
-      };
+      });
     } catch (error) {
       console.error("Submission error:", error);
       toast({
         title: "Submission Failed",
-        description: "Failed to upload video verification. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to upload video verification. Please try again.",
         variant: "destructive",
       });
       setSubmitting(false);
