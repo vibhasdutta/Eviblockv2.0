@@ -55,6 +55,7 @@ export const KYC_SESSION_KEYS = [
     'documentUploaded',
     'allStepsCompleted',
     'documentType',
+    'generatedQuestions', // Q&A API generated questions
     'kycFormData', // Legacy plain storage
     // Encrypted storage keys
     '_secure_kycFormData',
@@ -81,6 +82,7 @@ export function setupUnloadCleanup(): () => void {
             'documentUploaded',
             'allStepsCompleted',
             'documentType',
+            'generatedQuestions', // Q&A API generated questions
             // Encrypted storage keys
             '_secure_kycFormData',
             // NOTE: '_secure_last_activity' not included - managed by secureStorage

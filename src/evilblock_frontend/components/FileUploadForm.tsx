@@ -189,6 +189,32 @@ export default function FileUploadForm({ uid, onSuccess, storeOnly = false }: Fi
 
       if (storeOnly) {
         // Legal/Evidence: Store locally for later finalization
+
+        // For legal documents, trigger Q&A generation in background (non-blocking)
+        if (documentType === 'legal') {
+          toast({
+            title: "Processing Document",
+            description: "Generating security questions in the background...",
+          });
+
+          // Fire-and-forget: Start Q&A generation without waiting
+          (async () => {
+            try {
+              const { generateQuestions, storeGeneratedQuestions } = await import('@/lib/qaApi');
+              const generatedQuestions = await generateQuestions(file, 5);
+
+              if (generatedQuestions && generatedQuestions.length > 0) {
+                storeGeneratedQuestions(generatedQuestions);
+                console.log(`✅ Generated ${generatedQuestions.length} questions from document`);
+              } else {
+                console.warn('⚠️ Q&A generation failed, will use default questions');
+              }
+            } catch (error) {
+              console.error('Q&A generation error:', error);
+            }
+          })();
+        }
+
         sessionStorage.setItem('pendingDocument', JSON.stringify({
           name: file.name,
           cid: ipfsCID,

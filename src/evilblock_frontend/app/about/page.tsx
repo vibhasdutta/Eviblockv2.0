@@ -111,22 +111,28 @@ const Process1 = () => {
       step: "01",
       title: "Select Verification Level",
       description:
-        "Choose from three security tiers: Simple (storage only), Evidence (video proof), or Legal (full government-grade KYC). Tailor the verification level to your document's importance.",
+        "Choose from three security tiers: Simple (storage only), Evidence (video proof), or Legal (full government-grade KYC with AI verification). Tailor the verification level to your document's importance.",
     },
     {
       step: "02",
       title: "Secure Encryption & Upload",
       description:
-        "Documents are AES-256 encrypted before upload. Metadata is stored on the Internet Computer blockchain, while encrypted files are secured on IPFS, ensuring complete privacy and data ownership.",
+        "Documents are AES-256 encrypted before upload. For legal documents, AI begins analyzing content to generate custom verification questions. Metadata is stored on the Internet Computer blockchain, while encrypted files are secured on IPFS.",
     },
     {
       step: "03",
-      title: "Identity Verification",
+      title: "Identity & Video Verification",
       description:
-        "For Legal and Evidence documents, complete video verification and identity checks. This strictly links the document to your real-world identity, preventing fraud and impersonation.",
+        "For Legal and Evidence documents, complete video verification and identity checks. Record yourself reading a verification statement on camera to link the document to your real-world identity, preventing fraud and impersonation.",
     },
     {
       step: "04",
+      title: "AI-Powered Document Verification",
+      description:
+        "Legal tier documents undergo AI-powered verification with questions generated from your document's content. This ensures you've read and understand the document you're certifying, adding an extra layer of authenticity.",
+    },
+    {
+      step: "05",
       title: "Immutable Certification",
       description:
         "Once verified, a permanent, tamper-proof record is minted on the blockchain. You receive a cryptographic certificate proving the document's authenticity, timestamp, and ownership.",
@@ -242,9 +248,15 @@ const Feature43 = ({
       icon: <Shield className="size-6" />,
     },
     {
-      heading: "Multi-Tier Identity",
+      heading: "AI-Powered Verification",
       description:
-        "Choose from Simple, Evidence, or Legal verification tiers. Link documents to video proof and government KYC for maximum legal weight.",
+        "Legal tier documents feature AI-generated questions from your document content. Combined with video KYC and government ID verification, this provides unmatched proof of document understanding and authenticity.",
+      icon: <WandSparkles className="size-6" />,
+    },
+    {
+      heading: "Multi-Tier Security",
+      description:
+        "Choose from Simple, Evidence, or Legal verification tiers. Each level offers increasing security, from basic storage to full AI verification with video proof and government-grade KYC.",
       icon: <Users className="size-6" />,
     },
     {

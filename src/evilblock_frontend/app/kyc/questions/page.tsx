@@ -31,44 +31,6 @@ export default function QuestionsPage() {
 
   const [shuffledQuestions, setShuffledQuestions] = useState<Question[]>([]);
 
-  const allQuestions: Question[] = [
-    {
-      id: 'fullName',
-      question: 'What is your full legal name as it appears on your government ID?',
-      type: 'text',
-      required: true,
-      placeholder: 'Enter your full legal name'
-    },
-    {
-      id: 'dateOfBirth',
-      question: 'What is your date of birth?',
-      type: 'text',
-      required: true,
-      placeholder: 'DD/MM/YYYY'
-    },
-    {
-      id: 'address',
-      question: 'What is your current residential address?',
-      type: 'text',
-      required: true,
-      placeholder: 'Enter your complete address'
-    },
-    {
-      id: 'consent',
-      question: 'I hereby confirm that all information provided is accurate and I consent to verification of my identity.',
-      type: 'boolean',
-      required: true,
-      options: ['True', 'False']
-    },
-    {
-      id: 'authorized',
-      question: 'I am authorized to submit these documents and they belong to me.',
-      type: 'boolean',
-      required: true,
-      options: ['True', 'False']
-    }
-  ];
-
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -108,8 +70,35 @@ export default function QuestionsPage() {
           return;
         }
 
-        // Shuffle questions randomly
-        const shuffled = [...allQuestions].sort(() => Math.random() - 0.5);
+        // Load AI-generated questions (this page is legal-only)
+        const { getGeneratedQuestions } = await import('@/lib/qaApi');
+        let generatedQuestions = getGeneratedQuestions();
+
+        if (!generatedQuestions || generatedQuestions.length === 0) {
+          // Questions not yet generated - show waiting state
+          toast({
+            title: "Generating Questions",
+            description: "Please wait while we generate questions from your document...",
+          });
+
+          // Wait and retry (questions are being generated in background)
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          generatedQuestions = getGeneratedQuestions();
+
+          if (!generatedQuestions || generatedQuestions.length === 0) {
+            // Still not ready - show error
+            setLoading(false);
+            toast({
+              title: "Questions Not Ready",
+              description: "Questions are still being generated. Please wait a moment and refresh this page.",
+              variant: "destructive",
+            });
+            return;
+          }
+        }
+
+        // Shuffle questions randomly for security
+        const shuffled = [...generatedQuestions].sort(() => Math.random() - 0.5);
         setShuffledQuestions(shuffled);
 
         setLoading(false);
@@ -354,8 +343,8 @@ export default function QuestionsPage() {
           <CardHeader>
             <CardTitle>Verification Questions</CardTitle>
             <CardDescription>
-              These questions help us verify your identity and the purpose of your document submission.
-              Answer all questions accurately - 3 text-based and 2 true/false questions in random order.
+              These questions have been <strong>automatically generated from your uploaded document</strong> to verify your understanding of its contents.
+              Answer all questions accurately based on the document you submitted.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
