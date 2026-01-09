@@ -6,11 +6,8 @@ import { auth } from "@/lib/firebase/config";
 import { onAuthStateChanged } from "firebase/auth";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { db } from "@/lib/firebase/config";
-import { collection, addDoc } from "firebase/firestore";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { storeVideoVerification, linkVideoToDocument } from "@/lib/canister";
 import { useToast } from "@/hooks/use-toast";
+import { collection, addDoc } from "firebase/firestore";
 import { Loader2, Camera, Play, Square, RotateCcw, CheckCircle2 } from "lucide-react";
 
 interface VideoVerificationData {
@@ -415,6 +412,13 @@ export default function VideoVerificationPage() {
                   const dbRequest = indexedDB.open('evilblock-kyc', 1);
 
                   const videoBlob: Blob = await new Promise((resolve, reject) => {
+                    dbRequest.onupgradeneeded = (event: IDBVersionChangeEvent) => {
+                      const db = (event.target as IDBOpenDBRequest).result;
+                      if (!db.objectStoreNames.contains('videoVerification')) {
+                        db.createObjectStore('videoVerification');
+                      }
+                    };
+
                     dbRequest.onsuccess = () => {
                       const indexedDbInstance = dbRequest.result;
                       const transaction = indexedDbInstance.transaction('videoVerification', 'readonly');

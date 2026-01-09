@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { signInWithEmail } from '@/lib/firebase/auth';
@@ -8,7 +8,7 @@ import { Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import FaultyTerminal from '@/components/ui/FaultyTerminal';
 import TextType from '@/components/ui/TextType';
 
-export default function Login() {
+function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -25,7 +25,7 @@ export default function Login() {
 
     try {
       const userCredential = await signInWithEmail(email, password);
-      
+
       // Check if email is verified
       if (!userCredential.user.emailVerified) {
         setError('Please verify your email before logging in. Check your inbox.');
@@ -61,7 +61,7 @@ export default function Login() {
     <div className="min-h-screen flex">
       {/* Left Side - Branding/Image */}
       <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-black">
-        <FaultyTerminal 
+        <FaultyTerminal
           className="w-full h-full"
           scale={1.2}
           tint="#ffa600ff"
@@ -96,7 +96,7 @@ export default function Login() {
                 <p className="text-sm">{error}</p>
               </div>
             )}
-            
+
             <div className="space-y-4">
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
@@ -120,7 +120,7 @@ export default function Login() {
                   />
                 </div>
               </div>
-              
+
               <div>
                 <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
                   Password
@@ -194,5 +194,13 @@ export default function Login() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function Login() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+      <LoginForm />
+    </Suspense>
   );
 }

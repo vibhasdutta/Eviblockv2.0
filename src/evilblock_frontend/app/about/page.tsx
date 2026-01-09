@@ -4,10 +4,7 @@ import {
   Asterisk,
   CornerDownRight,
   BatteryCharging,
-  GitPullRequest,
   Layers,
-  RadioTower,
-  SquareKanban,
   WandSparkles,
   Github,
   Linkedin,
@@ -21,7 +18,7 @@ import React from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogTrigger, DialogContainer, DialogContent, DialogClose, DialogTitle, DialogDescription } from "@/components/ui/linear-modal";
-import { AnimatedNumberDemo } from "@/components/AnimatedNumber";
+import AnimatedNumberDemo from "@/components/AnimatedNumber";
 
 
 interface Hero1Props {

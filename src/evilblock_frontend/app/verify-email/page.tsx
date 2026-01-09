@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { verifyEmail } from '@/lib/firebase/auth';
 
-export default function VerifyEmail() {
+function VerifyEmailContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const oobCode = searchParams.get('oobCode');
@@ -23,7 +23,7 @@ export default function VerifyEmail() {
         await verifyEmail(oobCode);
         setSuccess(true);
         setVerifying(false);
-        
+
         // Redirect to login after 3 seconds
         setTimeout(() => {
           router.push('/login');
@@ -36,7 +36,7 @@ export default function VerifyEmail() {
         } else if (error.code === 'auth/expired-action-code') {
           setError('This verification link has expired. Please request a new one.');
         } else {
-          setError(err.message || 'Failed to verify email');
+          setError(error.message || 'Failed to verify email');
         }
       }
     };
@@ -131,5 +131,13 @@ export default function VerifyEmail() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function VerifyEmail() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Verifying...</div>}>
+      <VerifyEmailContent />
+    </Suspense>
   );
 }

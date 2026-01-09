@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { isSessionExpired, clearSecure } from "@/lib/secureStorage";
+import { isSessionExpired } from "@/lib/secureStorage";
 import { clearAllKycData, KYC_SESSION_KEYS } from "@/lib/kycCleanup";
 import { useToast } from "@/hooks/use-toast";
 

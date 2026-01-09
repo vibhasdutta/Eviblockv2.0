@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { auth, db, storage } from "@/lib/firebase/config";
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, updateDoc } from "firebase/firestore";
+
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -75,22 +75,38 @@ export default function QuestionsPage() {
         let generatedQuestions = getGeneratedQuestions();
 
         if (!generatedQuestions || generatedQuestions.length === 0) {
-          // Questions not yet generated - show waiting state
+          // Questions not yet generated - poll until ready
           toast({
             title: "Generating Questions",
-            description: "Please wait while we generate questions from your document...",
+            description: "Please wait while we generate questions from your document. This may take up to 2 minutes...",
+            duration: 10000,
           });
 
-          // Wait and retry (questions are being generated in background)
-          await new Promise(resolve => setTimeout(resolve, 3000));
-          generatedQuestions = getGeneratedQuestions();
+          // Poll every 2 seconds until questions are ready
+          let attempts = 0;
+          const maxAttempts = 60; // 2 minutes max (60 * 2 seconds)
+
+          while ((!generatedQuestions || generatedQuestions.length === 0) && attempts < maxAttempts) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            generatedQuestions = getGeneratedQuestions();
+            attempts++;
+
+            // Show progress update every 10 attempts (20 seconds)
+            if (attempts % 10 === 0) {
+              toast({
+                title: "Still Generating...",
+                description: `Please continue waiting. Questions are being generated (${attempts * 2}s elapsed)...`,
+                duration: 5000,
+              });
+            }
+          }
 
           if (!generatedQuestions || generatedQuestions.length === 0) {
-            // Still not ready - show error
+            // Timed out after 2 minutes
             setLoading(false);
             toast({
-              title: "Questions Not Ready",
-              description: "Questions are still being generated. Please wait a moment and refresh this page.",
+              title: "Generation Taking Longer Than Expected",
+              description: "Question generation is taking longer than usual. Please try refreshing the page in a moment.",
               variant: "destructive",
             });
             return;
@@ -251,7 +267,7 @@ export default function QuestionsPage() {
       const encryptedKycData = fileData.kyc_detail;
       if (!encryptedKycData) {
         // Fallback if missing (shouldn't happen with new flow, but good for safety)
-        const { encryptKycData, getKycDataFromSession } = await import('@/lib/encryption');
+        const { getKycDataFromSession } = await import('@/lib/encryption');
         const kycData = await getKycDataFromSession();
         if (!kycData) throw new Error('KYC data not found');
         // Note: Accessing kycData requires 'encryptedKycData' to be re-generated if missing
@@ -288,6 +304,13 @@ export default function QuestionsPage() {
       const videoBlob = await new Promise<Blob>((resolve, reject) => {
         dbRequest.onerror = () => {
           reject(new Error('Failed to open IndexedDB'));
+        };
+
+        dbRequest.onupgradeneeded = (event: IDBVersionChangeEvent) => {
+          const db = (event.target as IDBOpenDBRequest).result;
+          if (!db.objectStoreNames.contains('videoVerification')) {
+            db.createObjectStore('videoVerification');
+          }
         };
 
         dbRequest.onsuccess = () => {

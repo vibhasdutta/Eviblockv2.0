@@ -3,7 +3,6 @@
 import * as React from "react";
 import { useDropzone, type DropzoneOptions } from "react-dropzone";
 import { cn } from "@/lib/utils";
-import { X } from "lucide-react";
 
 interface FileUploaderProps extends React.HTMLAttributes<HTMLDivElement> {
   value?: File[] | null;
@@ -53,7 +52,7 @@ const FileUploader = React.forwardRef<HTMLDivElement, FileUploaderProps>(
 );
 FileUploader.displayName = "FileUploader";
 
-interface FileInputProps extends React.HTMLAttributes<HTMLDivElement> {}
+interface FileInputProps extends React.HTMLAttributes<HTMLDivElement> { }
 
 const FileInput = React.forwardRef<HTMLDivElement, FileInputProps>(
   ({ className, ...props }, ref) => {
@@ -71,7 +70,7 @@ const FileInput = React.forwardRef<HTMLDivElement, FileInputProps>(
 );
 FileInput.displayName = "FileInput";
 
-interface FileUploaderContentProps extends React.HTMLAttributes<HTMLDivElement> {}
+interface FileUploaderContentProps extends React.HTMLAttributes<HTMLDivElement> { }
 
 const FileUploaderContent = React.forwardRef<HTMLDivElement, FileUploaderContentProps>(
   ({ className, ...props }, ref) => {

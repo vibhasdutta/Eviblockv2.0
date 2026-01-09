@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import NumberFlow from '@number-flow/react';
 import { getTotalDocuments } from '@/lib/canister';
 
@@ -42,10 +42,10 @@ export default function AnimatedNumberDemo() {
     };
 
     fetchStats();
-    
+
     // Poll for updates every 5 seconds
     const interval = setInterval(fetchStats, 5000);
-    
+
     return () => clearInterval(interval);
   }, []);
 
@@ -72,5 +72,3 @@ export default function AnimatedNumberDemo() {
     </div>
   );
 }
-
-export { NumberWithDiff, AnimatedNumberDemo };

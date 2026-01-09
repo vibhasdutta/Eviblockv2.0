@@ -24,7 +24,7 @@ interface Hero115Props {
 
 const Hero115 = ({
   icon = <ShieldCheck className="size-16" />,
-  heading = "Blocks built with Shadcn & Tailwind",
+
   description = "Finely crafted components built with React, Tailwind and Shadcn UI. Developers can copy and paste these blocks directly into their project.",
   button = {
     text: "Discover Features",

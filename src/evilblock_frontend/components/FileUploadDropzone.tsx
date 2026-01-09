@@ -3,8 +3,6 @@
 import {
   FileUploader,
   FileInput,
-  FileUploaderContent,
-  FileUploaderItem,
 } from '@/components/ui/file-upload';
 import { FileText } from 'lucide-react';
 import { useState } from 'react';

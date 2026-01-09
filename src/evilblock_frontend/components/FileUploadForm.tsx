@@ -31,13 +31,6 @@ export default function FileUploadForm({ uid, onSuccess, storeOnly = false }: Fi
   });
   const { toast } = useToast();
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
-      setStatus({ stage: "idle", message: "" });
-    }
-  };
-
   const handleUpload = async () => {
     if (!file) {
       setStatus({

@@ -5,7 +5,7 @@ import { Shield, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import FileUploadDropzone from "@/components/FileUploadDropzone";
-import { getIPFSUrl, uploadToPinata } from "@/lib/ipfs";
+import { uploadToPinata } from "@/lib/ipfs";
 import { verifyDocument, logDocumentVerification, type FileRecord } from "@/lib/canister";
 import { auth } from "@/lib/firebase/config";
 import { onAuthStateChanged } from "firebase/auth";
@@ -119,9 +119,9 @@ export default function FileVerification() {
       }
     } catch (error) {
       console.error("Verification error:", error);
-      
+
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      
+
       if (errorMessage.includes("No file found") || errorMessage.includes("not found")) {
         setResult({
           status: "not-found",
@@ -144,7 +144,7 @@ export default function FileVerification() {
         // Provide more specific error messages for verification failures
         let toastTitle = "Verification Failed";
         let toastDescription = errorMessage;
-        
+
         if (errorMessage.includes("network") || errorMessage.includes("connection")) {
           toastTitle = "Network Error";
           toastDescription = "Please check your internet connection and try again.";
@@ -178,7 +178,7 @@ export default function FileVerification() {
         <CardDescription>
           Upload a file to verify its authenticity against blockchain records
         </CardDescription>
-        
+
         {/* Verify Button - Top Right Corner */}
         <Button
           onClick={handleVerify}

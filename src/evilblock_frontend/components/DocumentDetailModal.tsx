@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Eye, Loader2, FileText, User, Video, Shield, Clock, Hash, X } from "lucide-react";
+import { Eye, Loader2, FileText, User, Video, Shield, Clock, Hash } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
     Dialog,
@@ -14,7 +14,7 @@ import {
 import { type FileRecord, getVideoByDocumentCid, type VideoVerificationRecord } from "@/lib/canister";
 import { decryptKycData, type KYCFormData } from "@/lib/encryption";
 import { db } from "@/lib/firebase/config";
-import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { collection, query, where, getDocs } from "firebase/firestore";
 
 interface DocumentDetailModalProps {
     file: FileRecord;

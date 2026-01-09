@@ -120,7 +120,7 @@ export async function storeDocumentMetadata(params: StoreFileMetadataParams): Pr
  */
 export async function getDocumentsByUid(uid: string): Promise<FileRecord[]> {
   try {
-    return await backend.get_documents_by_uid(uid);
+    return await backend.get_documents_by_uid(uid) as FileRecord[];
   } catch (error) {
     console.error('Get records error:', error);
     throw error;
@@ -138,7 +138,7 @@ export async function getDocumentByCid(cid: string): Promise<FileRecord | null> 
       return null;
     }
 
-    return result.Ok;
+    return result.Ok as FileRecord;
   } catch (error) {
     console.error('Get document by CID error:', error);
     throw error;
@@ -169,7 +169,7 @@ export async function verifyDocument(cid: string): Promise<FileRecord> {
       throw new Error(result.Err);
     }
 
-    return result.Ok;
+    return result.Ok as FileRecord;
   } catch (error) {
     console.error('Verify file error:', error);
     throw error;
