@@ -19,8 +19,10 @@ function getAgent(): HttpAgent {
       verifyQuerySignatures: false,
     });
 
-    // Fetch root key for local development (only in browser)
-    if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production') {
+    // Fetch root key for local canister replica (needed regardless of NODE_ENV)
+    // Without this, all canister calls fail with certificate verification errors
+    const isLocalReplica = host.includes('localhost') || host.includes('127.0.0.1');
+    if (typeof window !== 'undefined' && isLocalReplica) {
       agentInstance.fetchRootKey().catch(err => {
         console.error('Failed to fetch root key:', err);
       });

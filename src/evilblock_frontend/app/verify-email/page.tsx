@@ -3,20 +3,24 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { verifyEmail } from '@/lib/firebase/auth';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from '@/lib/firebase/config';
+import { logOut, resendVerificationEmail, verifyEmail } from '@/lib/firebase/auth';
 
 function VerifyEmailContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const oobCode = searchParams.get('oobCode');
+  const email = searchParams.get('email');
   const [verifying, setVerifying] = useState(!!oobCode);
-  const [error, setError] = useState(oobCode ? '' : 'Invalid verification link');
+  const [checkingStatus, setCheckingStatus] = useState(!oobCode);
+  const [resending, setResending] = useState(false);
+  const [resentMessage, setResentMessage] = useState('');
+  const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
-    if (!oobCode) {
-      return;
-    }
+    if (!oobCode) return;
 
     const verify = async () => {
       try {
@@ -43,6 +47,67 @@ function VerifyEmailContent() {
 
     verify();
   }, [oobCode, router]);
+
+  useEffect(() => {
+    if (oobCode) return;
+
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        setCheckingStatus(false);
+        return;
+      }
+
+      await user.reload();
+      if (user.emailVerified) {
+        setSuccess(true);
+        setCheckingStatus(false);
+        await logOut();
+        router.push('/login');
+      } else {
+        setCheckingStatus(false);
+      }
+    });
+
+    const intervalId = setInterval(async () => {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      await user.reload();
+      if (user.emailVerified) {
+        setSuccess(true);
+        clearInterval(intervalId);
+        await logOut();
+        router.push('/login');
+      }
+    }, 3000);
+
+    return () => {
+      clearInterval(intervalId);
+      unsubscribe();
+    };
+  }, [oobCode, router]);
+
+  const handleResend = async () => {
+    setError('');
+    setResentMessage('');
+    setResending(true);
+
+    try {
+      await resendVerificationEmail();
+      setResentMessage('Verification email sent again. Please check your inbox.');
+    } catch (err: unknown) {
+      const authError = err as { code?: string; message?: string };
+      if (authError.code === 'auth/too-many-requests') {
+        setError('Too many requests. Please wait a moment before resending.');
+      } else if (authError.code === 'auth/user-token-expired') {
+        setError('Session expired. Please sign up or log in again.');
+      } else {
+        setError(authError.message || 'Failed to resend verification email.');
+      }
+    } finally {
+      setResending(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -92,6 +157,36 @@ function VerifyEmailContent() {
             </div>
           )}
 
+          {!oobCode && !success && (
+            <div className="rounded-md bg-black text-white p-4">
+              <div className="flex">
+                <div className="ml-1">
+                  <h3 className="text-sm font-medium">Check your inbox</h3>
+                  <p className="mt-2 text-sm">
+                    {email
+                      ? `We sent a verification link to ${email}.`
+                      : 'We sent a verification link to your email address.'}
+                  </p>
+                  <p className="mt-1 text-xs text-gray-300">
+                    This page will automatically redirect you to login once verification is complete.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {checkingStatus && !oobCode && (
+            <div className="rounded-md bg-black text-white p-4">
+              <p className="text-sm">Checking verification status...</p>
+            </div>
+          )}
+
+          {resentMessage && (
+            <div className="rounded-md bg-black text-white p-4">
+              <p className="text-sm">{resentMessage}</p>
+            </div>
+          )}
+
           {error && (
             <div className="rounded-md bg-black text-white p-4">
               <div className="flex">
@@ -113,6 +208,17 @@ function VerifyEmailContent() {
           )}
 
           <div className="text-center text-sm space-y-2">
+            {!oobCode && !success && (
+              <div>
+                <button
+                  onClick={handleResend}
+                  disabled={resending}
+                  className="font-medium text-black hover:underline disabled:opacity-50"
+                >
+                  {resending ? 'Resending...' : 'Resend verification email'}
+                </button>
+              </div>
+            )}
             {success && (
               <div>
                 <Link href="/login" className="font-medium text-black hover:underline">

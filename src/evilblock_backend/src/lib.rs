@@ -6,6 +6,10 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::cell::RefCell;
 
+// Global upload cap across all users/documents.
+// Adjust this value to control total platform capacity.
+const MAX_GLOBAL_DOCUMENTS: u64 = 100000;
+
 // Type aliases for stable storage
 type Memory = VirtualMemory<DefaultMemoryImpl>;
 type IdCell = ic_stable_structures::StableCell<u64, Memory>;
@@ -215,6 +219,17 @@ fn check_duplicate_cid(cid: &str) -> Result<(), String> {
     })
 }
 
+fn check_global_upload_limit() -> Result<(), String> {
+    let total = FILE_STORAGE.with(|storage| storage.borrow().len());
+    if total >= MAX_GLOBAL_DOCUMENTS {
+        return Err(format!(
+            "Global upload limit reached ({} documents). New uploads are currently disabled.",
+            MAX_GLOBAL_DOCUMENTS
+        ));
+    }
+    Ok(())
+}
+
 // Validate KYC detail (encrypted base64 string) - all types require it now
 fn validate_kyc_detail(kyc_detail: &str) -> Result<(), String> {
     // All document types require KYC data (simple has mini-KYC, others have full KYC)
@@ -256,6 +271,7 @@ fn store_document_metadata(
     validate_file_size(file_size)?;
     validate_document_type(&document_type)?;
     validate_kyc_detail(&kyc_detail)?;
+    check_global_upload_limit()?;
     check_duplicate_cid(&cid)?;
     
     let id = next_id();

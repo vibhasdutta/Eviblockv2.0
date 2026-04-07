@@ -61,16 +61,13 @@ export default function Signup() {
 
     try {
       await signUpWithEmail(email, password, displayName);
-      setSuccess('Account created! Please check your email to verify your account before logging in.');
+      setSuccess('Account created! Redirecting to email verification...');
       setDisplayName('');
       setEmail('');
       setPassword('');
       setConfirmPassword('');
-      
-      // Redirect to login after 2 seconds
-      setTimeout(() => {
-        router.push('/login');
-      }, 2000);
+
+      router.push(`/verify-email?email=${encodeURIComponent(email)}`);
     } catch (err: unknown) {
       const error = err as { code?: string; message?: string };
       if (error.code === 'auth/email-already-in-use') {

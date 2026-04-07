@@ -3,10 +3,12 @@ import type { NextRequest } from 'next/server';
 
 // Define public routes that don't require authentication
 const publicRoutes = [
+  '/',
   '/login',
   '/signup',
   '/forgot-password',
   '/verify-email',
+  '/reset-password',
   '/about',
   '/contact',
 ];
@@ -25,6 +27,11 @@ const kycProtectedRoutes: Record<string, { requiredCookie: string; redirectTo: s
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  const routeMatches = (route: string) => {
+    if (route === '/') return pathname === '/';
+    return pathname.startsWith(route);
+  };
+
   // Allow static files, API routes, and Next.js internals
   if (
     pathname.startsWith('/_next') ||
@@ -39,8 +46,8 @@ export async function proxy(request: NextRequest) {
   const isAuthenticated = !!session?.value;
 
   // Check if current route is public
-  const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route));
-  const isAuthRoute = authRoutes.some(route => pathname.startsWith(route));
+  const isPublicRoute = publicRoutes.some(route => routeMatches(route));
+  const isAuthRoute = authRoutes.some(route => routeMatches(route));
 
   // Redirect authenticated users away from auth pages
   if (isAuthenticated && isAuthRoute) {

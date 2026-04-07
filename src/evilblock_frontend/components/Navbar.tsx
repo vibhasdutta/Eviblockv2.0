@@ -82,7 +82,7 @@ export default function Navbar() {
   const menu: MenuItem[] = [
     { title: "Home", url: "/" },
     { title: "About", url: "/about" },
-    { title: "Dashboard", url: "/dashboard" },
+    ...(user ? [{ title: "Dashboard", url: "/dashboard" }] : []),
     { title: "Contact", url: "/contact" },
   ];
 

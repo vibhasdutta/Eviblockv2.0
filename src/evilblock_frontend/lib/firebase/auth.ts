@@ -4,6 +4,8 @@ import {
   signInWithEmailAndPassword,
   sendEmailVerification,
   sendPasswordResetEmail,
+  confirmPasswordReset,
+  verifyPasswordResetCode,
   signOut,
   User,
   onAuthStateChanged,
@@ -34,7 +36,10 @@ export const signUpWithEmail = async (email: string, password: string, displayNa
       displayName || null
     );
     // Send email verification
-    await sendEmailVerification(userCredential.user);
+    await sendEmailVerification(userCredential.user, {
+      url: `${window.location.origin}/verify-email`,
+      handleCodeInApp: true,
+    });
   }
   
   return userCredential;
@@ -94,7 +99,31 @@ export const updateUserPassword = async (currentPassword: string, newPassword: s
 
 // Send password reset email
 export const resetPassword = async (email: string) => {
-  return await sendPasswordResetEmail(auth, email);
+  return await sendPasswordResetEmail(auth, email, {
+    url: `${window.location.origin}/reset-password`,
+    handleCodeInApp: true,
+  });
+};
+
+// Resend verification email for currently authenticated user
+export const resendVerificationEmail = async () => {
+  const user = auth.currentUser;
+  if (!user) throw new Error('No authenticated user found');
+
+  return await sendEmailVerification(user, {
+    url: `${window.location.origin}/verify-email`,
+    handleCodeInApp: true,
+  });
+};
+
+// Validate password reset code from email link
+export const validateResetCode = async (oobCode: string) => {
+  return await verifyPasswordResetCode(auth, oobCode);
+};
+
+// Confirm new password with reset code
+export const completePasswordReset = async (oobCode: string, newPassword: string) => {
+  return await confirmPasswordReset(auth, oobCode, newPassword);
 };
 
 // Sign out

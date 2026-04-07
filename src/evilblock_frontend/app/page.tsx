@@ -109,7 +109,7 @@ export default function Home() {
         button={{
           text: "Get Started",
           icon: <Zap className="ml-2 size-4" />,
-          url: "/document-type-selection",
+          url: "/login?from=/document-type-selection",
         }}
         trustText="Trusted by developers worldwide"
       />

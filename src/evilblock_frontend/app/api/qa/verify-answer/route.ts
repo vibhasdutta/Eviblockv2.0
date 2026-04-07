@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 /**
- * Proxy for Q&A Generation API (SSE Streaming)
+ * Proxy for Q&A Verification API
  */
 export async function POST(request: NextRequest) {
     try {
@@ -15,34 +15,34 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Forward to the FastAPI streaming endpoint using streaming body to preserve boundary
-        const response = await fetch(`${apiUrl}/api/v1/stream-generate-questions`, {
+        const body = await request.json();
+        const targetUrl = `${apiUrl}/api/v1/verify-answer`;
+
+        console.log(`🔍 Proxying verification request to: ${targetUrl}`);
+        console.log(`📦 Request body:`, JSON.stringify(body));
+
+        // Forward to the FastAPI verification endpoint
+        const response = await fetch(targetUrl, {
             method: 'POST',
-            body: request.body,
+            body: JSON.stringify(body),
             headers: {
+                'Content-Type': 'application/json',
                 'x-api-key': apiKey,
-                'Content-Type': request.headers.get('content-type') || '',
             },
-            // @ts-ignore - duplex is required in Node.js fetch when body is a stream
-            duplex: 'half',
         });
 
+        console.log(`📡 Response status: ${response.status} ${response.statusText}`);
+
+        const data = await response.json();
+
         if (!response.ok) {
-            const errorText = await response.text();
             return NextResponse.json(
-                { success: false, error: `API error: ${errorText}` },
+                { success: false, ...data },
                 { status: response.status }
             );
         }
 
-        // Return the stream directly with the correct headers for SSE
-        return new Response(response.body, {
-            headers: {
-                'Content-Type': 'text/event-stream',
-                'Cache-Control': 'no-cache',
-                'Connection': 'keep-alive',
-            },
-        });
+        return NextResponse.json(data);
     } catch (error) {
         console.error('❌ Proxy error:', error);
         return NextResponse.json(

@@ -4,12 +4,20 @@ import * as nodemailer from 'nodemailer';
 export async function POST(request: NextRequest) {
   try {
     const { name, email, message } = await request.json();
+    const supportRecipient = process.env.EMAIL_TO_ADDRESS || process.env.NEXT_PUBLIC_CONTACT_EMAIL || process.env.EMAIL_SERVER_USER;
 
     // Validate required fields
     if (!name || !email || !message) {
       return NextResponse.json(
         { error: 'Name, email, and message are required' },
         { status: 400 }
+      );
+    }
+
+    if (!supportRecipient) {
+      return NextResponse.json(
+        { error: 'Support email is not configured' },
+        { status: 500 }
       );
     }
 
@@ -27,7 +35,7 @@ export async function POST(request: NextRequest) {
     // Email content
     const mailOptions = {
       from: `"${name}" <${process.env.EMAIL_SERVER_USER}>`,
-      to: process.env.EMAIL_TO_ADDRESS,
+      to: supportRecipient,
       subject: `New Contact Form Message from ${name} - EviBlock`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">

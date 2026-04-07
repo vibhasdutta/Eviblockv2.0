@@ -75,6 +75,8 @@
   /* White */
   --destructive: oklch(0 0 0);
   /* Black */
+  --destructive-foreground: oklch(1 0 0);
+  /* White */
   --border: oklch(0 0 0);
   /* Black */
   --input: oklch(0 0 0);
@@ -140,6 +142,8 @@
   /* Black */
   --destructive: oklch(1 0 0);
   /* White */
+  --destructive-foreground: oklch(0 0 0);
+  /* Black */
   --border: oklch(1 0 0 / 20%);
   /* White with transparency */
   --input: oklch(1 0 0 / 30%);

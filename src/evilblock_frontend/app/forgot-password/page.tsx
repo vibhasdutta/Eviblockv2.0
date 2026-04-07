@@ -18,7 +18,7 @@ export default function ForgotPassword() {
 
     try {
       await resetPassword(email);
-      setSuccess('Password reset email sent! Please check your inbox and follow the instructions.');
+      setSuccess('Password reset email sent! Open the link to set a new password. After reset, you will be redirected to login automatically.');
       setEmail('');
     } catch (err: unknown) {
       const error = err as { code?: string; message?: string };

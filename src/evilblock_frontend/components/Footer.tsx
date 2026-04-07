@@ -1,15 +1,10 @@
 import Link from 'next/link';
-import { Github, Twitter, Linkedin, Mail } from 'lucide-react';
+import { Mail } from 'lucide-react';
+import { getPublicContactEmail } from '@/lib/contact';
 
 export default function Footer() {
   const currentYear = new Date().getFullYear();
-
-  const socialLinks = [
-    { icon: Github, href: '#', label: 'GitHub' },
-    { icon: Twitter, href: '#', label: 'Twitter' },
-    { icon: Linkedin, href: '#', label: 'LinkedIn' },
-    { icon: Mail, href: '#', label: 'Email' },
-  ];
+  const contactEmail = getPublicContactEmail();
 
   const footerLinks = [
     { name: 'About', href: '/about' },
@@ -52,23 +47,18 @@ export default function Footer() {
             </nav>
           </div>
 
-          {/* Social Links */}
+          {/* Contact */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold text-white underline decoration-1 underline-offset-2">
-              Connect
+              Contact
             </h3>
-            <div className="flex flex-wrap gap-3">
-              {socialLinks.map((social) => (
-                <a
-                  key={social.label}
-                  href={social.href}
-                  className="p-3 bg-white text-black rounded-full hover:bg-gray-200 transition-all duration-200 transform hover:scale-110 underline decoration-1 underline-offset-2"
-                  aria-label={social.label}
-                >
-                  <social.icon className="h-5 w-5" />
-                </a>
-              ))}
-            </div>
+            <a
+              href={`mailto:${contactEmail}`}
+              className="inline-flex p-3 bg-white text-black rounded-full hover:bg-gray-200 transition-all duration-200 transform hover:scale-110"
+              aria-label="Email"
+            >
+              <Mail className="h-5 w-5" />
+            </a>
           </div>
         </div>
 

@@ -8,10 +8,12 @@ export interface QAGenerationResponse {
   data?: {
     questions: Array<{
       q: string;
-      a: string;
+      a?: string; // May be hidden in quiz mode
       type: 'qa' | 'true_false';
       correct_answer?: boolean; // Only for true_false type
+      question_id: string;
     }>;
+    session_id?: string;
   };
   error?: string;
 }
@@ -25,115 +27,149 @@ export interface GeneratedQuestion {
   answer?: string; // Expected answer for validation
   options?: string[]; // For boolean questions
   correctAnswer?: boolean; // For true/false questions
+  sessionId?: string;
+}
+
+export interface VerificationResult {
+  success: boolean;
+  is_correct: boolean;
+  score: number;
+  feedback: string;
+  method_used: string;
 }
 
 /**
- * Generate questions from a document file
+ * Generate questions from a document file using streaming
  * @param file - PDF or image file to analyze
  * @param numQuestions - Number of questions to generate (1-50, default: 5)
- * @returns Array of generated questions or null if failed
+ * @param onEvent - Callback for SSE events
+ */
+export async function streamGenerateQuestions(
+  file: File,
+  numQuestions: number = 5,
+  onEvent: (type: string, data: any) => void
+): Promise<void> {
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('num_questions', numQuestions.toString());
+    formData.append('quiz_mode', 'true'); // Always quiz mode for verification
+    formData.append('ocr_strategy', 'hi_res');
+    formData.append('languages', 'eng');
+
+    const response = await fetch('/api/qa/generate-questions', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to connect to stream: ${response.statusText}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('Response body is null');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop() || '';
+
+      for (const part of parts) {
+        const lines = part.split('\n');
+        let event = 'message';
+        let data = '';
+
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            event = line.slice(7).trim();
+          } else if (line.startsWith('data: ')) {
+            data += line.slice(6).trim();
+          }
+        }
+
+        if (data) {
+          try {
+            const jsonData = JSON.parse(data);
+            onEvent(event, jsonData);
+          } catch (e) {
+            console.warn('Failed to parse SSE data:', data);
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Streaming Q&A error:', error);
+    onEvent('error', { message: error instanceof Error ? error.message : 'Unknown error' });
+  }
+}
+
+/**
+ * Verify a user's answer against the API
+ */
+export async function verifyAnswer(
+  sessionId: string,
+  questionId: string,
+  userAnswer: string
+): Promise<VerificationResult | null> {
+  try {
+    const response = await fetch('/api/qa/verify-answer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: sessionId,
+        question_id: questionId,
+        user_answer: userAnswer,
+        method: 'both'
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Verification failed: ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Answer verification error:', error);
+    return null;
+  }
+}
+
+/**
+ * Generate questions from a document file (Legacy REST wrapper)
  */
 export async function generateQuestions(
   file: File,
   numQuestions: number = 5
 ): Promise<GeneratedQuestion[] | null> {
-  try {
-    const apiUrl = process.env.NEXT_PUBLIC_QA_API_URL;
+  return new Promise((resolve) => {
+    let questions: GeneratedQuestion[] = [];
+    let sessionId = '';
 
-    if (!apiUrl) {
-      console.error('❌ QA_API_URL environment variable not set');
-      console.error('Add NEXT_PUBLIC_QA_API_URL to .env.local file');
-      return null;
-    }
-
-    console.log('🔗 Q&A API URL:', apiUrl);
-
-    // Validate number of questions
-    const validNumQuestions = Math.min(Math.max(numQuestions, 1), 50);
-
-    // Create FormData for multipart upload
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('num_questions', validNumQuestions.toString());
-
-    console.log('🔗 Using Q&A API proxy route');
-    console.log('📤 Sending file to Q&A API:', file.name, `(${file.size} bytes)`);
-    console.log('⏰ This may take up to 2 minutes...');
-
-    // Use Next.js API route as proxy to bypass CORS issues
-    const apiEndpoint = '/api/qa/generate-questions';
-
-    // Create AbortController with 3-minute timeout (API can take up to 2 minutes)
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 180000); // 3 minutes
-
-    try {
-      // Call the Next.js API proxy route (same-origin, no CORS issues)
-      const response = await fetch(apiEndpoint, {
-        method: 'POST',
-        body: formData,
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-      console.log('📥 Response status:', response.status, response.statusText);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ API Error:', response.status, errorText);
-        throw new Error(`API request failed with status ${response.status}: ${errorText}`);
+    streamGenerateQuestions(file, numQuestions, (type, data) => {
+      if (type === 'info' && data.session_id) {
+        sessionId = data.session_id;
+      } else if (type === 'question') {
+        questions.push({
+          id: data.question_id || `q${questions.length}`,
+          question: data.question || data.q,
+          type: data.type === 'true_false' ? 'boolean' : 'text',
+          required: true,
+          options: data.type === 'true_false' ? ['True', 'False'] : undefined,
+          sessionId: sessionId
+        });
+      } else if (type === 'done') {
+        resolve(questions);
+      } else if (type === 'error') {
+        resolve(null);
       }
-
-      const result: QAGenerationResponse = await response.json();
-      console.log('✅ API Response:', result);
-
-      if (!result.success || !result.data?.questions) {
-        console.error('❌ Invalid response format:', result);
-        throw new Error(result.error || 'Failed to generate questions');
-      }
-
-      // Transform API response to internal question format
-      const questions: GeneratedQuestion[] = result.data.questions.map((qa, index) => {
-        if (qa.type === 'true_false') {
-          // True/False question
-          return {
-            id: `generated_tf${index + 1}`,
-            question: qa.q,
-            type: 'boolean' as const,
-            required: true,
-            options: ['True', 'False'],
-            answer: qa.a, // The displayed answer text
-            correctAnswer: qa.correct_answer, // The boolean value
-          };
-        } else {
-          // Text-based Q&A question
-          return {
-            id: `generated_qa${index + 1}`,
-            question: qa.q,
-            type: 'text' as const,
-            required: true,
-            placeholder: 'Enter your answer',
-            answer: qa.a, // Expected answer
-          };
-        }
-      });
-
-      return questions;
-    } catch (timeoutError) {
-      clearTimeout(timeoutId);
-      throw timeoutError;
-    }
-  } catch (error) {
-    console.error('Q&A generation error:', error);
-
-    // Check if error is timeout
-    if (error instanceof Error && error.name === 'AbortError') {
-      console.error('⏰ Request timed out after 3 minutes');
-      console.error('The Q&A API is taking longer than expected. Please try again.');
-    }
-
-    return null;
-  }
+    });
+  });
 }
 
 /**
@@ -167,6 +203,7 @@ export function getGeneratedQuestions(): GeneratedQuestion[] | null {
 export function clearGeneratedQuestions(): void {
   try {
     sessionStorage.removeItem('generatedQuestions');
+    sessionStorage.removeItem('qaSessionId');
   } catch (error) {
     console.error('Failed to clear generated questions:', error);
   }

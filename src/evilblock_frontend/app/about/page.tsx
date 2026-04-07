@@ -374,7 +374,7 @@ const TeamSection = () => {
                 </div>
               </DialogTrigger>
               <DialogContainer overlayClassName={member.backdropGradient}>
-                <DialogContent className={`max-w-2xl mx-auto bg-white dark:bg-gray-900/95 backdrop-blur-xl p-8 rounded-2xl shadow-2xl relative border ${member.borderColor} overflow-hidden`}>
+                <DialogContent className={`max-w-2xl mx-auto bg-white dark:bg-gray-900/95 backdrop-blur-xl px-8 py-12 md:px-10 md:py-14 rounded-2xl shadow-2xl relative border ${member.borderColor} overflow-hidden`}>
                   <div className={`absolute inset-0 bg-gradient-to-br ${member.gradient} pointer-events-none opacity-50`} />
                   <DialogClose className="absolute right-4 top-4 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors z-20" />
                   <div className="relative z-10 text-center">

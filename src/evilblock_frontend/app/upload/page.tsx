@@ -8,17 +8,42 @@ import { auth } from "@/lib/firebase/config";
 import { onAuthStateChanged } from "firebase/auth";
 import { useToast } from "@/hooks/use-toast";
 
+type DocumentType = "legal" | "evidence" | "simple";
+
+const normalizeDocumentType = (value?: string | null): DocumentType | null => {
+  if (!value) return null;
+  const normalized = value.toLowerCase().trim();
+
+  if (normalized === "leagal") return "legal";
+  if (normalized === "legal" || normalized === "evidence" || normalized === "simple") {
+    return normalized;
+  }
+
+  return null;
+};
+
 export default function UploadPage() {
   const [uid, setUid] = useState<string>("");
   const [loading, setLoading] = useState(true);
-  const [documentType, setDocumentType] = useState<string | null>(null);
+  const [documentType, setDocumentType] = useState<DocumentType | null>(null);
   const router = useRouter();
   const { toast } = useToast();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        const docType = sessionStorage.getItem('documentType');
+        const docType = normalizeDocumentType(sessionStorage.getItem('documentType'));
+
+        if (!docType) {
+          toast({
+            title: "Document Type Required",
+            description: "Please select a document type before uploading.",
+            variant: "destructive",
+          });
+          router.push("/document-type-selection");
+          return;
+        }
+
         setDocumentType(docType);
 
         // Simple documents skip KYC entirely
@@ -54,9 +79,20 @@ export default function UploadPage() {
   }, [router]);
 
   const handleUploadSuccess = () => {
-    const documentType = sessionStorage.getItem('documentType');
+    const currentDocumentType =
+      normalizeDocumentType(documentType) ?? normalizeDocumentType(sessionStorage.getItem('documentType'));
 
-    if (documentType === 'simple') {
+    if (!currentDocumentType) {
+      toast({
+        title: "Document Type Missing",
+        description: "Please select a document type and try again.",
+        variant: "destructive",
+      });
+      router.push('/document-type-selection');
+      return;
+    }
+
+    if (currentDocumentType === 'simple') {
       // Simple documents go straight to dashboard
       setTimeout(() => {
         router.push("/dashboard");
@@ -104,6 +140,7 @@ export default function UploadPage() {
               uid={uid}
               onSuccess={handleUploadSuccess}
               storeOnly={documentType !== 'simple'} // Simple uploads immediately, others store for later
+              documentType={documentType || undefined}
             />
           )}
         </div>

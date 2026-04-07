@@ -314,21 +314,36 @@ export default function VideoVerificationPage() {
 
       // Wrap IndexedDB operations in Promise for proper error handling
       await new Promise<void>((resolve, reject) => {
-        const request = indexedDB.open('evilblock-kyc', 1);
+        // Open without version to check current state first
+        const checkRequest = indexedDB.open('evilblock-kyc');
 
-        request.onerror = () => {
-          console.error('IndexedDB error:', request.error);
-          reject(new Error(`Failed to open IndexedDB: ${request.error?.message || 'Unknown error'}`));
+        checkRequest.onerror = () => {
+          console.error('IndexedDB error:', checkRequest.error);
+          reject(new Error(`Failed to open IndexedDB: ${checkRequest.error?.message || 'Unknown error'}`));
         };
 
-        request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
-          const db = (event.target as IDBOpenDBRequest).result;
-          if (!db.objectStoreNames.contains('videoVerification')) {
-            db.createObjectStore('videoVerification');
-          }
-        };
+        checkRequest.onsuccess = () => {
+          const existingDb = checkRequest.result;
+          const needsUpgrade = !existingDb.objectStoreNames.contains('videoVerification');
+          const currentVersion = existingDb.version;
+          existingDb.close();
 
-        request.onsuccess = () => {
+          // Reopen with proper version (upgrade if store is missing)
+          const request = indexedDB.open('evilblock-kyc', needsUpgrade ? currentVersion + 1 : currentVersion);
+
+          request.onerror = () => {
+            console.error('IndexedDB error:', request.error);
+            reject(new Error(`Failed to open IndexedDB: ${request.error?.message || 'Unknown error'}`));
+          };
+
+          request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
+            const db = (event.target as IDBOpenDBRequest).result;
+            if (!db.objectStoreNames.contains('videoVerification')) {
+              db.createObjectStore('videoVerification');
+            }
+          };
+
+          request.onsuccess = () => {
           try {
             const db = request.result;
             const transaction = db.transaction('videoVerification', 'readwrite');
@@ -360,34 +375,38 @@ export default function VideoVerificationPage() {
                 // Evidence type skips questions - finalize upload here
                 toast({
                   title: "Processing Evidence",
-                  description: "Uploading to blockchain and Firebase...",
+                  description: "Uploading document and recording to blockchain...",
                 });
 
                 try {
+                  // 0. Retrieve document from IndexedDB and upload to Pinata
+                  const { getFileFromIndexedDB } = await import('@/lib/fileStorage');
+                  const { uploadToPinata } = await import('@/lib/ipfs');
+                  const docFile = await getFileFromIndexedDB();
+                  if (!docFile) throw new Error('No pending document found in storage');
+
+                  const ipfsResult = await uploadToPinata(docFile);
+                  if (!ipfsResult.success) throw new Error(ipfsResult.error || 'IPFS upload failed');
+                  const realDocCid = ipfsResult.hash;
+
                   // Import necessary functions
                   const { storeDocumentMetadata, storeVideoVerification, linkVideoToDocument } = await import('@/lib/canister');
                   const { getStorage, ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
 
-
-                  // Get pending document from session
+                  // Get pending document metadata from session
                   const pendingDocJson = sessionStorage.getItem('pendingDocument');
                   if (!pendingDocJson) {
-                    throw new Error('No pending document found');
+                    throw new Error('No pending document metadata found');
                   }
                   const pendingDoc = JSON.parse(pendingDocJson);
 
-                  // Use pre-encrypted KYC data from upload step
-                  const encryptedKycData = pendingDoc.kyc_detail;
-                  if (!encryptedKycData) {
-                    // Fallback re-encryption (safety check)
-                    const { encryptKycData } = await import('@/lib/encryption');
-                    const { getSecure } = await import('@/lib/secureStorage');
-                    const kycData = await getSecure('kycFormData');
-                    if (!kycData) throw new Error('KYC data not found/expired');
-                    // This path requires re-importing which is fine for fallback
-                  }
+                  // 1. Encrypt KYC data with the REAL CID
+                  const { encryptKycData, getKycDataFromSession } = await import('@/lib/encryption');
+                  const kycData = await getKycDataFromSession();
+                  if (!kycData) throw new Error('KYC data not found/expired');
+                  const encryptedKycData = await encryptKycData(kycData, currentUser.uid, realDocCid);
 
-                  // Upload to blockchain
+                  // 2. Upload to blockchain with real CID
                   const currentDate = new Date().toISOString().split("T")[0];
                   await storeDocumentMetadata({
                     name: pendingDoc.name,
@@ -395,8 +414,8 @@ export default function VideoVerificationPage() {
                     date: currentDate,
                     file_type: pendingDoc.file_type,
                     file_size: pendingDoc.file_size,
-                    cid: pendingDoc.cid,
-                    kyc_detail: encryptedKycData || "", // Should be there
+                    cid: realDocCid, // Use real CID
+                    kyc_detail: encryptedKycData,
                     document_type: 'evidence',
                   });
 
@@ -407,37 +426,36 @@ export default function VideoVerificationPage() {
                   }
                   const videoData = JSON.parse(videoVerificationData);
 
-                  // Get video blob from IndexedDB
-                  const indexedDB = window.indexedDB || (window as any).webkitIndexedDB;
-                  const dbRequest = indexedDB.open('evilblock-kyc', 1);
+                   // Get video blob from IndexedDB (version-safe)
+                   const videoBlob: Blob = await new Promise((resolve, reject) => {
+                     const dbRequest2 = (window.indexedDB || (window as any).webkitIndexedDB).open('evilblock-kyc');
 
-                  const videoBlob: Blob = await new Promise((resolve, reject) => {
-                    dbRequest.onupgradeneeded = (event: IDBVersionChangeEvent) => {
-                      const db = (event.target as IDBOpenDBRequest).result;
-                      if (!db.objectStoreNames.contains('videoVerification')) {
-                        db.createObjectStore('videoVerification');
-                      }
-                    };
+                     dbRequest2.onsuccess = () => {
+                       const indexedDbInstance = dbRequest2.result;
 
-                    dbRequest.onsuccess = () => {
-                      const indexedDbInstance = dbRequest.result;
-                      const transaction = indexedDbInstance.transaction('videoVerification', 'readonly');
-                      const store = transaction.objectStore('videoVerification');
-                      const getRequest = store.get('current'); // Use 'current' key as it's used for storing
+                       if (!indexedDbInstance.objectStoreNames.contains('videoVerification')) {
+                         indexedDbInstance.close();
+                         reject(new Error('Video verification store not found'));
+                         return;
+                       }
 
-                      getRequest.onsuccess = () => {
-                        if (getRequest.result && getRequest.result.videoBlob) {
-                          resolve(getRequest.result.videoBlob);
-                        } else {
-                          reject(new Error('Video not found in database'));
-                        }
-                      };
+                       const vidTransaction = indexedDbInstance.transaction('videoVerification', 'readonly');
+                       const vidStore = vidTransaction.objectStore('videoVerification');
+                       const getRequest = vidStore.get('current');
 
-                      getRequest.onerror = () => reject(new Error('Failed to retrieve video'));
-                    };
+                       getRequest.onsuccess = () => {
+                         if (getRequest.result && getRequest.result.videoBlob) {
+                           resolve(getRequest.result.videoBlob);
+                         } else {
+                           reject(new Error('Video not found in database'));
+                         }
+                       };
 
-                    dbRequest.onerror = () => reject(new Error('Failed to open database'));
-                  });
+                       getRequest.onerror = () => reject(new Error('Failed to retrieve video'));
+                     };
+
+                     dbRequest2.onerror = () => reject(new Error('Failed to open database'));
+                   });
 
                   // Upload video to Firebase Storage (same path and fileName as Legal)
                   const storage = getStorage();
@@ -465,7 +483,7 @@ export default function VideoVerificationPage() {
                     videoUrl,
                     videoHash: videoData.videoHash,
                     timestamp: new Date().toISOString(),
-                    documentCid: pendingDoc.cid,
+                    documentCid: realDocCid, // Use real CID
                     fileName: videoData.fileName,
                     fileSize: videoData.videoSize,
                   });
@@ -474,7 +492,7 @@ export default function VideoVerificationPage() {
                   const vidVerification = await storeVideoVerification(currentUser.uid, videoData.videoHash, videoProofDoc.id);
 
                   // Link video to document on blockchain (same as Legal)
-                  await linkVideoToDocument(Number(vidVerification.id), pendingDoc.cid);
+                  await linkVideoToDocument(Number(vidVerification.id), realDocCid);
 
                   toast({
                     title: "Upload Complete",
@@ -493,9 +511,13 @@ export default function VideoVerificationPage() {
 
                 } catch (error) {
                   console.error("Evidence finalization error:", error);
+                  const rawMessage = error instanceof Error ? error.message : "Failed to finalize upload";
+                  const description = rawMessage.includes("Global upload limit reached")
+                    ? "The platform-wide upload capacity has been reached. Please try again later."
+                    : rawMessage;
                   toast({
                     title: "Upload Failed",
-                    description: error instanceof Error ? error.message : "Failed to finalize upload",
+                    description,
                     variant: "destructive",
                   });
                   reject(error instanceof Error ? error : new Error('Evidence upload failed'));
@@ -521,12 +543,17 @@ export default function VideoVerificationPage() {
             reject(err instanceof Error ? err : new Error('Unknown error'));
           }
         };
+        };
       });
     } catch (error) {
       console.error("Submission error:", error);
+      const rawMessage = error instanceof Error ? error.message : "Failed to upload video verification. Please try again.";
+      const description = rawMessage.includes("Global upload limit reached")
+        ? "The platform-wide upload capacity has been reached. Please try again later."
+        : rawMessage;
       toast({
         title: "Submission Failed",
-        description: error instanceof Error ? error.message : "Failed to upload video verification. Please try again.",
+        description,
         variant: "destructive",
       });
       setSubmitting(false);

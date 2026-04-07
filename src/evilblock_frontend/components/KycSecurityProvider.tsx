@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { isSessionExpired } from "@/lib/secureStorage";
+import { isSessionExpired, refreshActivity } from "@/lib/secureStorage";
 import { clearAllKycData, KYC_SESSION_KEYS } from "@/lib/kycCleanup";
 import { useToast } from "@/hooks/use-toast";
 
@@ -60,6 +60,23 @@ export default function KycSecurityProvider({ children }: { children: React.Reac
         // Setup periodic timeout check (every minute)
         const intervalId = setInterval(checkTimeout, 60000);
 
+        // Keep activity heartbeat fresh only when user is interacting.
+        const trackActivity = () => refreshActivity();
+        const activityEvents: Array<keyof WindowEventMap> = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
+        activityEvents.forEach((eventName) => {
+            window.addEventListener(eventName, trackActivity, { passive: true });
+        });
+
+        // Re-check timeout when tab becomes visible/focused.
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                checkTimeout();
+            }
+        };
+        const handleFocus = () => checkTimeout();
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('focus', handleFocus);
+
         // Cleanup on page unload/close
         const handleBeforeUnload = () => {
             // Clear KYC cookies synchronously (can't do async in beforeunload)
@@ -84,18 +101,33 @@ export default function KycSecurityProvider({ children }: { children: React.Reac
                     }
                     db.close();
                 };
+
+                // Also clear pending legal/evidence file cache DB.
+                indexedDB.deleteDatabase('evilblock-files');
             } catch (error) {
                 console.error('Failed to clear IndexedDB on unload:', error);
             }
         };
 
+        // pagehide improves reliability on mobile Safari where beforeunload can be skipped.
+        const handlePageHide = () => {
+            handleBeforeUnload();
+        };
+
         // Add event listener for page close/reload
         window.addEventListener('beforeunload', handleBeforeUnload);
+        window.addEventListener('pagehide', handlePageHide);
 
         // Cleanup
         return () => {
             clearInterval(intervalId);
             window.removeEventListener('beforeunload', handleBeforeUnload);
+            window.removeEventListener('pagehide', handlePageHide);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('focus', handleFocus);
+            activityEvents.forEach((eventName) => {
+                window.removeEventListener(eventName, trackActivity);
+            });
         };
     }, [isKycPage, pathname, router, toast]);
 

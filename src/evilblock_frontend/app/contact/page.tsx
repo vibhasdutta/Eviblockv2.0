@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { getPublicContactEmail } from "@/lib/contact";
 
 interface Contact7Props {
   title?: string;
@@ -38,7 +39,7 @@ const Contact7 = ({
   description = "Get in touch with the EviBlock team. We're here to help you with decentralized file storage and verification solutions.",
   emailLabel = "Email Support",
   emailDescription = "We respond to all technical inquiries within 24 hours.",
-  email = "vibhasdutta11@gmail.com",
+  email = getPublicContactEmail(),
   chatLabel = "Technical Support",
   chatDescription = "Need help with file uploads or verification? Send us a message.",
   chatLink = "Get Support",
