@@ -50,8 +50,10 @@ export async function proxy(request: NextRequest) {
   const isAuthRoute = authRoutes.some(route => routeMatches(route));
 
   // Redirect authenticated users away from auth pages
+  // But respect ?from= param so "Get Started" works for logged-in users
   if (isAuthenticated && isAuthRoute) {
-    return NextResponse.redirect(new URL('/', request.url));
+    const from = request.nextUrl.searchParams.get('from');
+    return NextResponse.redirect(new URL(from || '/', request.url));
   }
 
   // Redirect unauthenticated users to login for protected routes
@@ -74,48 +76,10 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  // Verify session validity for authenticated routes
-  if (isAuthenticated && !isPublicRoute) {
-    try {
-      // Verify session with API route
-      const verifyUrl = new URL('/api/auth/me', request.url);
-      const response = await fetch(verifyUrl, {
-        headers: {
-          Cookie: `session=${session.value}`,
-        },
-      });
-
-      const data = await response.json();
-
-      // If session is invalid, clear cookie and redirect to login
-      if (!data.user) {
-        const loginUrl = new URL('/login', request.url);
-        loginUrl.searchParams.set('from', pathname);
-        const redirectResponse = NextResponse.redirect(loginUrl);
-        redirectResponse.cookies.delete('session');
-        return redirectResponse;
-      }
-
-      // Add user info to headers for downstream use
-      const requestHeaders = new Headers(request.headers);
-      requestHeaders.set('x-user-id', data.user.uid);
-      requestHeaders.set('x-user-email', data.user.email || '');
-
-      return NextResponse.next({
-        request: {
-          headers: requestHeaders,
-        },
-      });
-    } catch (error) {
-      console.error('Session verification error:', error);
-      // On error, redirect to login
-      const loginUrl = new URL('/login', request.url);
-      const redirectResponse = NextResponse.redirect(loginUrl);
-      redirectResponse.cookies.delete('session');
-      return redirectResponse;
-    }
-  }
-
+  // For authenticated users on protected routes, the session cookie existence
+  // is sufficient for middleware routing. Full session verification happens at
+  // the page/API level (e.g., Navbar fetches /api/auth/me, API routes verify tokens).
+  // This avoids self-referencing fetch deadlocks in dev mode.
   return NextResponse.next();
 }
 

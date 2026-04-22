@@ -22,8 +22,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Set session expiration (5 days)
-    const expiresIn = 60 * 60 * 24 * 5 * 1000;
-    const sessionCookie = await adminAuth.createSessionCookie(idToken, { expiresIn });
+    const expiresInMs = 60 * 60 * 24 * 5 * 1000;  // Firebase expects milliseconds
+    const expiresInSec = 60 * 60 * 24 * 5;         // Cookie maxAge expects seconds
+    const sessionCookie = await adminAuth.createSessionCookie(idToken, { expiresIn: expiresInMs });
 
     // Get user record to retrieve displayName
     const userRecord = await adminAuth.getUser(decodedToken.uid);
@@ -31,7 +32,7 @@ export async function POST(request: NextRequest) {
     // Set cookie
     const cookieStore = await cookies();
     cookieStore.set('session', sessionCookie, {
-      maxAge: expiresIn,
+      maxAge: expiresInSec,
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
