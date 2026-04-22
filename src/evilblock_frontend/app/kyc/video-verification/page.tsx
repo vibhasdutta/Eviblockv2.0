@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { collection, addDoc } from "firebase/firestore";
 import { Loader2, Camera, Play, Square, RotateCcw, CheckCircle2 } from "lucide-react";
+import { isValidDocumentType, restartKycFlow } from "@/lib/kycCleanup";
 
 interface VideoVerificationData {
   videoBlob: Blob | null;
@@ -44,16 +45,28 @@ export default function VideoVerificationPage() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
+        const documentType = sessionStorage.getItem('documentType');
+
+        if (!isValidDocumentType(documentType) || documentType === 'simple') {
+          toast({
+            title: "Session Reset",
+            description: "Please select your document type again to restart verification.",
+            variant: "destructive",
+          });
+          void restartKycFlow(router);
+          return;
+        }
+
         // Check if KYC form data exists using secure storage
         const { hasSecure } = await import('@/lib/secureStorage');
         const hasKycData = hasSecure('kycFormData');
         if (!hasKycData) {
           toast({
-            title: "KYC Required",
-            description: "Please complete KYC form first.",
+            title: "Session Reset",
+            description: "Your KYC session was cleared. Please start again from document selection.",
             variant: "destructive",
           });
-          router.push("/kyc");
+          void restartKycFlow(router);
           return;
         }
 
@@ -61,11 +74,11 @@ export default function VideoVerificationPage() {
         const documentStored = sessionStorage.getItem('documentStored');
         if (!documentStored) {
           toast({
-            title: "Document Upload Required",
-            description: "Please upload your documents first.",
+            title: "Session Reset",
+            description: "Your upload cache was cleared. Please restart from document selection.",
             variant: "destructive",
           });
-          router.push("/upload");
+          void restartKycFlow(router);
           return;
         }
 
@@ -81,8 +94,7 @@ export default function VideoVerificationPage() {
         }
 
         // Get document type for step indicator
-        const docType = sessionStorage.getItem('documentType') || 'legal';
-        setDocumentType(docType);
+        setDocumentType(documentType);
 
         setLoading(false);
       } else {

@@ -1,24 +1,16 @@
 import { create } from '@web3-storage/w3up-client';
+import { perf, PerfCategory } from './perf';
 
 /**
  * Upload file to IPFS using Web3.Storage
  * Returns the CID (Content Identifier)
  */
 export async function uploadToIPFS(file: File): Promise<string> {
-  try {
-    // Create Web3.Storage client
+  return perf.track('Upload to Web3.Storage', PerfCategory.IPFS, async () => {
     const client = await create();
-    
-    // Authorize the client (you'll need to set up authentication)
-    // For now, using direct upload without account
-    // Note: You'll need to set up proper authentication in production
-    
     const cid = await client.uploadFile(file);
     return cid.toString();
-  } catch (error) {
-    console.error('IPFS upload error:', error);
-    throw new Error('Failed to upload file to IPFS');
-  }
+  }, { fileName: file.name, fileSize: file.size });
 }
 
 /**
@@ -26,6 +18,8 @@ export async function uploadToIPFS(file: File): Promise<string> {
  * You need PINATA_API_KEY and PINATA_SECRET_KEY
  */
 export async function uploadToPinata(file: File): Promise<{ success: boolean; hash: string; error?: string }> {
+  const end = perf.start('Upload to Pinata (IPFS)', PerfCategory.IPFS, { fileName: file.name, fileSize: file.size });
+
   const formData = new FormData();
   formData.append('file', file);
 
@@ -50,6 +44,7 @@ export async function uploadToPinata(file: File): Promise<{ success: boolean; ha
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+      end('error');
       return {
         success: false,
         hash: '',
@@ -58,12 +53,14 @@ export async function uploadToPinata(file: File): Promise<{ success: boolean; ha
     }
 
     const data = await response.json();
+    end('success');
     return {
       success: true,
-      hash: data.IpfsHash, // Returns CID
+      hash: data.IpfsHash,
     };
   } catch (error) {
     console.error('Pinata upload error:', error);
+    end('error');
     return {
       success: false,
       hash: '',
@@ -77,42 +74,31 @@ export async function uploadToPinata(file: File): Promise<{ success: boolean; ha
  * Uses simple hash generation compatible with all browsers
  */
 export async function generateCIDFromFile(file: File): Promise<string> {
-  try {
-    // Read file as ArrayBuffer
+  return perf.track('Generate CID from File', PerfCategory.ENCRYPTION, async () => {
     const arrayBuffer = await file.arrayBuffer();
     const bytes = new Uint8Array(arrayBuffer);
     
-    // Simple hash function (djb2)
     let hash = 5381;
     for (let i = 0; i < bytes.length; i++) {
       hash = ((hash << 5) + hash) + bytes[i];
-      hash = hash & hash; // Convert to 32bit integer
+      hash = hash & hash;
     }
     
-    // Convert to positive number and hex
     const hashStr = (hash >>> 0).toString(16).padStart(8, '0');
-    
-    // Create a pseudo-CID with file info
     const pseudoCID = `${hashStr}-${file.size}-${file.name.replace(/[^a-zA-Z0-9]/g, '')}`;
     
     return pseudoCID;
-  } catch (error) {
-    console.error('CID generation error:', error);
-    throw new Error('Failed to generate CID');
-  }
+  }, { fileName: file.name, fileSize: file.size });
 }
 
 /**
  * Verify file integrity by comparing local CID with stored CID
  */
 export async function verifyFileIntegrity(file: File, storedCID: string): Promise<boolean> {
-  try {
+  return perf.track('Verify File Integrity', PerfCategory.ENCRYPTION, async () => {
     const generatedCID = await generateCIDFromFile(file);
     return generatedCID === storedCID;
-  } catch (error) {
-    console.error('File verification error:', error);
-    return false;
-  }
+  });
 }
 
 /**

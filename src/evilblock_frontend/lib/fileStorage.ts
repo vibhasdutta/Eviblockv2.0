@@ -5,6 +5,7 @@
  * Legal documents are stored locally until questions are answered,
  * then uploaded to Pinata/IPFS.
  */
+import { perf, PerfCategory } from './perf';
 
 const DB_NAME = 'evilblock-files';
 const DB_VERSION = 1;
@@ -40,14 +41,13 @@ function openDatabase(): Promise<IDBDatabase> {
  * Used for legal documents before questions are answered
  */
 export async function storeFileInIndexedDB(file: File): Promise<void> {
-    try {
+    return perf.track('Store File in IndexedDB', PerfCategory.FILE_STORAGE, async () => {
         const db = await openDatabase();
 
         return new Promise((resolve, reject) => {
             const transaction = db.transaction(STORE_NAME, 'readwrite');
             const store = transaction.objectStore(STORE_NAME);
 
-            // Store the entire File object
             const request = store.put(file, 'pendingFile');
 
             request.onsuccess = () => {
@@ -64,17 +64,14 @@ export async function storeFileInIndexedDB(file: File): Promise<void> {
                 db.close();
             };
         });
-    } catch (error) {
-        console.error('File storage error:', error);
-        throw error;
-    }
+    }, { fileName: file.name, fileSize: file.size });
 }
 
 /**
  * Retrieve file from IndexedDB after questions answered
  */
 export async function getFileFromIndexedDB(): Promise<File> {
-    try {
+    return perf.track('Retrieve File from IndexedDB', PerfCategory.FILE_STORAGE, async () => {
         const db = await openDatabase();
 
         return new Promise((resolve, reject) => {
@@ -102,17 +99,14 @@ export async function getFileFromIndexedDB(): Promise<File> {
                 db.close();
             };
         });
-    } catch (error) {
-        console.error('File retrieval error:', error);
-        throw error;
-    }
+    });
 }
 
 /**
  * Clear file from IndexedDB after successful upload
  */
 export async function clearFileFromIndexedDB(): Promise<void> {
-    try {
+    return perf.track('Clear File from IndexedDB', PerfCategory.FILE_STORAGE, async () => {
         const db = await openDatabase();
 
         return new Promise((resolve, reject) => {
@@ -135,10 +129,7 @@ export async function clearFileFromIndexedDB(): Promise<void> {
                 db.close();
             };
         });
-    } catch (error) {
-        console.error('File cleanup error:', error);
-        throw error;
-    }
+    });
 }
 
 /**

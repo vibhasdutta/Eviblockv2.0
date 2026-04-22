@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, UserCheck, ArrowRight, ArrowLeft, Shield, CheckCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { isValidDocumentType, restartKycFlow } from "@/lib/kycCleanup";
 
 interface KYCFormData {
   name: string;
@@ -50,6 +51,18 @@ export default function KYCPage() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
+        const documentType = sessionStorage.getItem('documentType');
+
+        if (!isValidDocumentType(documentType) || documentType === 'simple') {
+          toast({
+            title: "Session Reset",
+            description: "Please select your document type again to restart verification.",
+            variant: "destructive",
+          });
+          void restartKycFlow(router);
+          return;
+        }
+
         // Pre-fill name and email from Firebase Auth
         setFormData(prev => ({
           ...prev,
@@ -63,7 +76,7 @@ export default function KYCPage() {
     });
 
     return () => unsubscribe();
-  }, [router]);
+  }, [router, toast]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;

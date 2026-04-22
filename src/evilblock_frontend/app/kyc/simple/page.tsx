@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { FileCheck } from "lucide-react";
+import { restartKycFlow } from "@/lib/kycCleanup";
 
 export default function SimpleKYCPage() {
     const router = useRouter();
@@ -24,6 +25,19 @@ export default function SimpleKYCPage() {
         email: "",
         phone: "",
     });
+
+    useEffect(() => {
+        const documentType = sessionStorage.getItem('documentType');
+
+        if (documentType !== 'simple') {
+            toast({
+                title: "Session Reset",
+                description: "Please select your document type again to restart verification.",
+                variant: "destructive",
+            });
+            void restartKycFlow(router);
+        }
+    }, [router, toast]);
 
     const validateForm = () => {
         const newErrors = {

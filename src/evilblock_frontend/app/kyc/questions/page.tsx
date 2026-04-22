@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, HelpCircle, CheckCircle, AlertCircle } from "lucide-react";
+import { isValidDocumentType, restartKycFlow } from "@/lib/kycCleanup";
 
 interface Question {
   id: string;
@@ -27,6 +28,10 @@ interface VerificationState {
   isVerifying: boolean;
   isCorrect: boolean | null;
   feedback: string | null;
+}
+
+function shuffleQuestions(questions: Question[]): Question[] {
+  return [...questions].sort(() => Math.random() - 0.5);
 }
 
 export default function QuestionsPage() {
@@ -45,6 +50,18 @@ export default function QuestionsPage() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
+        const documentType = sessionStorage.getItem('documentType');
+
+        if (!isValidDocumentType(documentType) || documentType !== 'legal') {
+          toast({
+            title: "Session Reset",
+            description: "Please select your document type again to restart verification.",
+            variant: "destructive",
+          });
+          void restartKycFlow(router);
+          return;
+        }
+
         // Check prerequisites using secure storage
         const { hasSecure } = await import('@/lib/secureStorage');
         const hasKycData = hasSecure('kycFormData');
@@ -53,36 +70,41 @@ export default function QuestionsPage() {
 
         if (!hasKycData) {
           toast({
-            title: "KYC Required",
-            description: "Please complete KYC verification first.",
+            title: "Session Reset",
+            description: "Your KYC session was cleared. Please restart from document selection.",
             variant: "destructive",
           });
-          router.push("/kyc");
+          void restartKycFlow(router);
           return;
         }
 
         if (!documentStored) {
           toast({
-            title: "Document Upload Required",
-            description: "Please upload your documents first.",
+            title: "Session Reset",
+            description: "Your upload cache was cleared. Please restart from document selection.",
             variant: "destructive",
           });
-          router.push("/upload");
+          void restartKycFlow(router);
           return;
         }
 
         if (!videoVerification) {
           toast({
-            title: "Video Verification Required",
-            description: "Please complete video verification first.",
+            title: "Session Reset",
+            description: "Your video verification state was cleared. Please restart from document selection.",
             variant: "destructive",
           });
-          router.push("/kyc/video-verification");
+          void restartKycFlow(router);
           return;
         }
 
         // Load AI-generated questions (this page is legal-only)
-        const { getGeneratedQuestions, streamGenerateQuestions, storeGeneratedQuestions } = await import('@/lib/qaApi');
+        const {
+          getGeneratedQuestions,
+          normalizeGeneratedQuestion,
+          streamGenerateQuestions,
+          storeGeneratedQuestions,
+        } = await import('@/lib/qaApi');
         let generatedQuestions = getGeneratedQuestions();
 
         if (!generatedQuestions || generatedQuestions.length === 0) {
@@ -94,11 +116,11 @@ export default function QuestionsPage() {
 
           if (!file) {
             toast({
-              title: "File Not Found",
-              description: "We couldn't find your uploaded document. Please try uploading again.",
+              title: "Session Reset",
+              description: "We could not find your cached document. Please restart from document selection.",
               variant: "destructive",
             });
-            router.push("/upload");
+            void restartKycFlow(router);
             return;
           }
 
@@ -115,24 +137,29 @@ export default function QuestionsPage() {
                 setGenerationStatus(`Processing document (${data.extraction_method || 'OCR'})...`);
                 break;
               case 'question':
-                const newQuestion: Question = {
-                  id: data.question_id || `q${collectedQuestions.length}`,
-                  question: data.question || data.q,
-                  type: data.type === 'true_false' ? 'boolean' : 'text',
-                  required: true,
-                  options: data.type === 'true_false' ? ['True', 'False'] : undefined,
-                  sessionId: currentSessionId
-                };
-                collectedQuestions.push(newQuestion);
-                setGenerationStatus(`Generated ${collectedQuestions.length} questions...`);
+                const newQuestion = normalizeGeneratedQuestion(data, collectedQuestions.length, currentSessionId);
+
+                if (newQuestion) {
+                  collectedQuestions.push(newQuestion);
+                  setGenerationStatus(`Generated ${collectedQuestions.length} questions...`);
+                }
                 break;
               case 'done':
                 setGenerationStatus("Generation complete!");
                 generatedQuestions = collectedQuestions;
+
+                if (collectedQuestions.length === 0) {
+                  toast({
+                    title: "Generation Failed",
+                    description: "The Q&A service returned invalid questions. Please try again.",
+                    variant: "destructive",
+                  });
+                  setLoading(false);
+                  break;
+                }
+
                 storeGeneratedQuestions(collectedQuestions);
-                // Trigger shuffle and show questions
-                const shuffled = [...collectedQuestions].sort(() => Math.random() - 0.5);
-                setShuffledQuestions(shuffled);
+                setShuffledQuestions(shuffleQuestions(collectedQuestions));
                 setLoading(false);
                 break;
               case 'error':
@@ -150,8 +177,18 @@ export default function QuestionsPage() {
         }
 
         // Questions already generated in background
-        const shuffled = [...generatedQuestions].sort(() => Math.random() - 0.5);
-        setShuffledQuestions(shuffled);
+        if (generatedQuestions.length === 0) {
+          toast({
+            title: "Questions Unavailable",
+            description: "Stored questions were invalid. Please reload this step to generate them again.",
+            variant: "destructive",
+          });
+          sessionStorage.removeItem('generatedQuestions');
+          setLoading(false);
+          return;
+        }
+
+        setShuffledQuestions(shuffleQuestions(generatedQuestions));
         setLoading(false);
       } else {
         router.push("/login?returnUrl=/kyc/questions");
@@ -492,6 +529,11 @@ export default function QuestionsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+              {shuffledQuestions.length === 0 && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/20 dark:text-amber-200">
+                  No valid questions were available from the Q&A service. Reload this page to regenerate them.
+                </div>
+              )}
               {shuffledQuestions.map((question, index) => (
                 <div key={question.id} className="space-y-3 pb-6 border-b last:border-0">
                   <div className="flex items-start gap-3">
@@ -574,7 +616,7 @@ export default function QuestionsPage() {
 
               <Button
                 onClick={handleSubmit}
-                disabled={submitting}
+                disabled={submitting || shuffledQuestions.length === 0}
                 className="w-full"
                 size="lg"
               >

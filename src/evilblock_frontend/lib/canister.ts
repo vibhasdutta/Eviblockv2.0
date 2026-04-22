@@ -1,6 +1,7 @@
 import { Actor, HttpAgent } from '@dfinity/agent';
 import { idlFactory } from './candid/evilblock_backend';
 import type { _SERVICE } from './candid/evilblock_backend';
+import { perf, PerfCategory } from './perf';
 
 // Canister ID - replace with your actual canister ID after deployment
 const CANISTER_ID = process.env.NEXT_PUBLIC_CANISTER_ID_EVILBLOCK_BACKEND || 'rrkah-fqaaa-aaaaa-aaaaq-cai';
@@ -94,7 +95,7 @@ export interface StoreFileMetadataParams {
  * Store document metadata on ICP blockchain
  */
 export async function storeDocumentMetadata(params: StoreFileMetadataParams): Promise<FileRecord> {
-  try {
+  return perf.track('Store Document Metadata', PerfCategory.BLOCKCHAIN, async () => {
     const result = await backend.store_document_metadata(
       params.name,
       params.uid,
@@ -111,29 +112,23 @@ export async function storeDocumentMetadata(params: StoreFileMetadataParams): Pr
     }
 
     return result.Ok;
-  } catch (error) {
-    console.error('Store metadata error:', error);
-    throw error;
-  }
+  }, { fileSize: params.file_size, docType: params.document_type });
 }
 
 /**
  * Get all document records for a user
  */
 export async function getDocumentsByUid(uid: string): Promise<FileRecord[]> {
-  try {
+  return perf.track('Get Documents By UID', PerfCategory.BLOCKCHAIN, async () => {
     return await backend.get_documents_by_uid(uid) as FileRecord[];
-  } catch (error) {
-    console.error('Get records error:', error);
-    throw error;
-  }
+  });
 }
 
 /**
  * Get document record by CID
  */
 export async function getDocumentByCid(cid: string): Promise<FileRecord | null> {
-  try {
+  return perf.track('Get Document By CID', PerfCategory.BLOCKCHAIN, async () => {
     const result = await backend.get_document_by_cid(cid);
 
     if ('Err' in result) {
@@ -141,30 +136,24 @@ export async function getDocumentByCid(cid: string): Promise<FileRecord | null> 
     }
 
     return result.Ok as FileRecord;
-  } catch (error) {
-    console.error('Get document by CID error:', error);
-    throw error;
-  }
+  });
 }
 
 /**
  * Check if a document with the given CID already exists
  */
 export async function checkDocumentExists(cid: string): Promise<boolean> {
-  try {
+  return perf.track('Check Document Exists', PerfCategory.BLOCKCHAIN, async () => {
     const record = await getDocumentByCid(cid);
     return record !== null;
-  } catch (error) {
-    console.error('Check document exists error:', error);
-    return false;
-  }
+  });
 }
 
 /**
  * Verify document by CID
  */
 export async function verifyDocument(cid: string): Promise<FileRecord> {
-  try {
+  return perf.track('Verify Document', PerfCategory.BLOCKCHAIN, async () => {
     const result = await backend.verify_document(cid);
 
     if ('Err' in result) {
@@ -172,30 +161,24 @@ export async function verifyDocument(cid: string): Promise<FileRecord> {
     }
 
     return result.Ok as FileRecord;
-  } catch (error) {
-    console.error('Verify file error:', error);
-    throw error;
-  }
+  });
 }
 
 /**
  * Get total documents count
  */
 export async function getTotalDocuments(): Promise<number> {
-  try {
+  return perf.track('Get Total Documents', PerfCategory.BLOCKCHAIN, async () => {
     const count = await backend.get_total_documents();
     return Number(count);
-  } catch (error) {
-    console.error('Get total files error:', error);
-    throw error;
-  }
+  });
 }
 
 /**
  * Delete document record (admin function)
  */
 export async function deleteDocument(id: number): Promise<string> {
-  try {
+  return perf.track('Delete Document', PerfCategory.BLOCKCHAIN, async () => {
     const result = await backend.delete_document(BigInt(id));
 
     if ('Err' in result) {
@@ -203,17 +186,14 @@ export async function deleteDocument(id: number): Promise<string> {
     }
 
     return result.Ok;
-  } catch (error) {
-    console.error('Delete file error:', error);
-    throw error;
-  }
+  });
 }
 
 /**
  * Log a document verification event
  */
 export async function logDocumentVerification(cid: string, verifierUid: string, verifierName: string): Promise<VerificationLog> {
-  try {
+  return perf.track('Log Document Verification', PerfCategory.BLOCKCHAIN, async () => {
     const result = await backend.log_document_verification(cid, verifierUid, verifierName);
 
     if ('Err' in result) {
@@ -221,34 +201,25 @@ export async function logDocumentVerification(cid: string, verifierUid: string, 
     }
 
     return result.Ok;
-  } catch (error) {
-    console.error('Log verification error:', error);
-    throw error;
-  }
+  });
 }
 
 /**
  * Get verification logs for a specific document by CID
  */
 export async function getVerificationLogsByCid(cid: string): Promise<VerificationLog[]> {
-  try {
+  return perf.track('Get Verification Logs By CID', PerfCategory.BLOCKCHAIN, async () => {
     return await backend.get_verification_logs_by_cid(cid);
-  } catch (error) {
-    console.error('Get verification logs error:', error);
-    throw error;
-  }
+  });
 }
 
 /**
  * Get verification logs for a specific document by document ID
  */
 export async function getVerificationLogsByDocumentId(documentId: number): Promise<VerificationLog[]> {
-  try {
+  return perf.track('Get Verification Logs By Doc ID', PerfCategory.BLOCKCHAIN, async () => {
     return await backend.get_verification_logs_by_document_id(BigInt(documentId));
-  } catch (error) {
-    console.error('Get verification logs by file ID error:', error);
-    throw error;
-  }
+  });
 }
 
 /**
@@ -259,7 +230,7 @@ export async function storeVideoVerification(
   videoHash: string,
   firestoreDocId: string
 ): Promise<VideoVerificationRecord> {
-  try {
+  return perf.track('Store Video Verification', PerfCategory.BLOCKCHAIN, async () => {
     const result = await backend.store_video_verification(uid, videoHash, firestoreDocId);
 
     if ('Err' in result) {
@@ -267,10 +238,7 @@ export async function storeVideoVerification(
     }
 
     return result.Ok;
-  } catch (error) {
-    console.error('Store video verification error:', error);
-    throw error;
-  }
+  });
 }
 
 /**
@@ -280,7 +248,7 @@ export async function linkVideoToDocument(
   videoVerificationId: number,
   documentCid: string
 ): Promise<VideoVerificationRecord> {
-  try {
+  return perf.track('Link Video To Document', PerfCategory.BLOCKCHAIN, async () => {
     const result = await backend.link_video_to_document(
       BigInt(videoVerificationId),
       documentCid
@@ -291,22 +259,16 @@ export async function linkVideoToDocument(
     }
 
     return result.Ok;
-  } catch (error) {
-    console.error('Update video verification document CID error:', error);
-    throw error;
-  }
+  });
 }
 
 /**
  * Get video verification records by user UID
  */
 export async function getVideosByUid(uid: string): Promise<VideoVerificationRecord[]> {
-  try {
+  return perf.track('Get Videos By UID', PerfCategory.BLOCKCHAIN, async () => {
     return await backend.get_videos_by_uid(uid);
-  } catch (error) {
-    console.error('Get video verifications by UID error:', error);
-    throw error;
-  }
+  });
 }
 
 /**
@@ -315,13 +277,10 @@ export async function getVideosByUid(uid: string): Promise<VideoVerificationReco
 export async function getVideoByFirestoreId(
   firestoreDocId: string
 ): Promise<VideoVerificationRecord | null> {
-  try {
+  return perf.track('Get Video By Firestore ID', PerfCategory.BLOCKCHAIN, async () => {
     const result = await backend.get_video_by_firestore_id(firestoreDocId);
     return result.length > 0 && result[0] ? result[0] : null;
-  } catch (error) {
-    console.error('Get video verification by Firestore ID error:', error);
-    throw error;
-  }
+  });
 }
 
 /**
@@ -330,13 +289,10 @@ export async function getVideoByFirestoreId(
 export async function getVideoByHash(
   videoHash: string
 ): Promise<VideoVerificationRecord | null> {
-  try {
+  return perf.track('Get Video By Hash', PerfCategory.BLOCKCHAIN, async () => {
     const result = await backend.get_video_by_hash(videoHash);
     return result.length > 0 && result[0] ? result[0] : null;
-  } catch (error) {
-    console.error('Get video verification by hash error:', error);
-    throw error;
-  }
+  });
 }
 
 /**
@@ -345,13 +301,10 @@ export async function getVideoByHash(
 export async function getVideoByDocumentCid(
   documentCid: string
 ): Promise<VideoVerificationRecord | null> {
-  try {
+  return perf.track('Get Video By Document CID', PerfCategory.BLOCKCHAIN, async () => {
     const result = await backend.get_video_by_document_cid(documentCid);
     return result.length > 0 && result[0] ? result[0] : null;
-  } catch (error) {
-    console.error('Get video verification by document CID error:', error);
-    throw error;
-  }
+  });
 }
 
 export { backend };

@@ -3,6 +3,7 @@
  * Uses AES-256-GCM with PBKDF2 key derivation
  * Key is derived from UID + CID
  */
+import { perf, PerfCategory } from './perf';
 
 // Salt for PBKDF2 (should be consistent for reproducible keys)
 const SALT = new TextEncoder().encode('evilblock-kyc-salt-v1');
@@ -46,7 +47,7 @@ export async function encryptKycData(
     uid: string,
     cid: string
 ): Promise<string> {
-    try {
+    return perf.track('Encrypt KYC Data (AES-256-GCM)', PerfCategory.ENCRYPTION, async () => {
         // Validate inputs
         if (!data || !data.name) {
             throw new Error('Invalid KYC data');
@@ -83,10 +84,7 @@ export async function encryptKycData(
 
         // Encode to Base64
         return btoa(String.fromCharCode(...combined));
-    } catch (error) {
-        console.error('Encryption error:', error);
-        throw new Error('Failed to encrypt KYC data');
-    }
+    }, { dataSize: JSON.stringify(data).length });
 }
 
 /**
@@ -98,7 +96,7 @@ export async function decryptKycData(
     uid: string,
     cid: string
 ): Promise<KYCFormData> {
-    try {
+    return perf.track('Decrypt KYC Data (AES-256-GCM)', PerfCategory.ENCRYPTION, async () => {
         // Validate inputs
         if (!encryptedData) {
             throw new Error('Encrypted data is required');
@@ -135,10 +133,7 @@ export async function decryptKycData(
         // Decode and parse JSON
         const jsonString = new TextDecoder().decode(plaintextBuffer);
         return JSON.parse(jsonString);
-    } catch (error) {
-        console.error('Decryption error:', error);
-        throw new Error('Failed to decrypt KYC data');
-    }
+    });
 }
 
 /**

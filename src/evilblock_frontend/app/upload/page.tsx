@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase/config";
 import { onAuthStateChanged } from "firebase/auth";
 import { useToast } from "@/hooks/use-toast";
+import { restartKycFlow } from "@/lib/kycCleanup";
 
 type DocumentType = "legal" | "evidence" | "simple";
 
@@ -36,11 +37,11 @@ export default function UploadPage() {
 
         if (!docType) {
           toast({
-            title: "Document Type Required",
-            description: "Please select a document type before uploading.",
+            title: "Session Reset",
+            description: "Your upload session was reset. Please select your document type again.",
             variant: "destructive",
           });
-          router.push("/document-type-selection");
+          void restartKycFlow(router);
           return;
         }
 
@@ -59,11 +60,11 @@ export default function UploadPage() {
 
         if (!hasKycData) {
           toast({
-            title: "KYC Required",
-            description: "Please complete KYC verification first.",
+            title: "Session Reset",
+            description: "Your KYC session was cleared. Please start again from document selection.",
             variant: "destructive",
           });
-          router.push("/kyc");
+          void restartKycFlow(router);
           return;
         }
 

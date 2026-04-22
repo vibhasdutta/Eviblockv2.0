@@ -18,36 +18,38 @@ import {
 } from 'firebase/auth';
 import { auth } from './config';
 import { createUserDocument } from './firestore';
+import { perf, PerfCategory } from '../perf';
 
 // Sign up with email and password
 export const signUpWithEmail = async (email: string, password: string, displayName?: string) => {
-  const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-  
-  // Update profile with display name if provided
-  if (displayName && userCredential.user) {
-    await updateProfile(userCredential.user, { displayName });
-  }
-  
-  // Create user document in Firestore
-  if (userCredential.user) {
-    await createUserDocument(
-      userCredential.user.uid,
-      userCredential.user.email,
-      displayName || null
-    );
-    // Send email verification
-    await sendEmailVerification(userCredential.user, {
-      url: `${window.location.origin}/verify-email`,
-      handleCodeInApp: true,
-    });
-  }
-  
-  return userCredential;
+  return perf.track('Sign Up (Email)', PerfCategory.AUTH, async () => {
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    
+    if (displayName && userCredential.user) {
+      await updateProfile(userCredential.user, { displayName });
+    }
+    
+    if (userCredential.user) {
+      await createUserDocument(
+        userCredential.user.uid,
+        userCredential.user.email,
+        displayName || null
+      );
+      await sendEmailVerification(userCredential.user, {
+        url: `${window.location.origin}/verify-email`,
+        handleCodeInApp: true,
+      });
+    }
+    
+    return userCredential;
+  });
 };
 
 // Sign in with email and password
 export const signInWithEmail = async (email: string, password: string) => {
-  return await signInWithEmailAndPassword(auth, email, password);
+  return perf.track('Sign In (Email)', PerfCategory.AUTH, async () => {
+    return await signInWithEmailAndPassword(auth, email, password);
+  });
 };
 
 // Update user profile (display name)
@@ -128,12 +130,16 @@ export const completePasswordReset = async (oobCode: string, newPassword: string
 
 // Sign out
 export const logOut = async () => {
-  return await signOut(auth);
+  return perf.track('Sign Out', PerfCategory.AUTH, async () => {
+    return await signOut(auth);
+  });
 };
 
 // Verify email with action code
 export const verifyEmail = async (actionCode: string) => {
-  return await applyActionCode(auth, actionCode);
+  return perf.track('Verify Email', PerfCategory.AUTH, async () => {
+    return await applyActionCode(auth, actionCode);
+  });
 };
 
 // Auth state observer

@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { isSessionExpired, refreshActivity } from "@/lib/secureStorage";
-import { clearAllKycData, KYC_SESSION_KEYS } from "@/lib/kycCleanup";
+import { clearKycBrowserStateSync, restartKycFlow } from "@/lib/kycCleanup";
 import { useToast } from "@/hooks/use-toast";
 
 // KYC-related paths where we should check for timeout
@@ -48,10 +48,7 @@ export default function KycSecurityProvider({ children }: { children: React.Reac
                 });
 
                 // Clear all data
-                await clearAllKycData();
-
-                // Redirect to home
-                router.push('/');
+                await restartKycFlow(router);
             }
         };
 
@@ -79,30 +76,12 @@ export default function KycSecurityProvider({ children }: { children: React.Reac
 
         // Cleanup on page unload/close
         const handleBeforeUnload = () => {
-            // Clear KYC cookies synchronously (can't do async in beforeunload)
-            const cookiesToClear = ['kyc_step_1', 'kyc_step_2', 'kyc_step_3'];
-            cookiesToClear.forEach(cookie => {
-                document.cookie = `${cookie}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-            });
-
-            // Clear ALL session storage items including encrypted ones
-            KYC_SESSION_KEYS.forEach(key => sessionStorage.removeItem(key));
+            clearKycBrowserStateSync();
 
             // Clear IndexedDB video blob (synchronous attempt)
             try {
                 const indexedDB = window.indexedDB || (window as any).webkitIndexedDB;
-                const request = indexedDB.open('evilblock-kyc', 1);
-                request.onsuccess = () => {
-                    const db = request.result;
-                    if (db.objectStoreNames.contains('videoVerification')) {
-                        const transaction = db.transaction('videoVerification', 'readwrite');
-                        const store = transaction.objectStore('videoVerification');
-                        store.delete('current');
-                    }
-                    db.close();
-                };
-
-                // Also clear pending legal/evidence file cache DB.
+                indexedDB.deleteDatabase('evilblock-kyc');
                 indexedDB.deleteDatabase('evilblock-files');
             } catch (error) {
                 console.error('Failed to clear IndexedDB on unload:', error);

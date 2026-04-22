@@ -2,6 +2,7 @@
  * Q&A Generation API Integration
  * Calls external API to generate questions from uploaded documents
  */
+import { perf, PerfCategory } from './perf';
 
 export interface QAGenerationResponse {
   success: boolean;
@@ -38,6 +39,56 @@ export interface VerificationResult {
   method_used: string;
 }
 
+function normalizeQuestionText(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function normalizeQuestionType(value: unknown): 'text' | 'boolean' {
+  return value === 'true_false' || value === 'boolean' ? 'boolean' : 'text';
+}
+
+function normalizeQuestionId(value: unknown, fallbackIndex: number): string {
+  const normalized = normalizeQuestionText(value);
+  return normalized || `q${fallbackIndex}`;
+}
+
+export function normalizeGeneratedQuestion(
+  raw: any,
+  fallbackIndex: number,
+  sessionId?: string
+): GeneratedQuestion | null {
+  const questionText = normalizeQuestionText(
+    raw?.question ?? raw?.q ?? raw?.prompt ?? raw?.text ?? raw?.label
+  );
+
+  if (!questionText) {
+    return null;
+  }
+
+  const type = normalizeQuestionType(raw?.type);
+
+  return {
+    id: normalizeQuestionId(raw?.question_id ?? raw?.id, fallbackIndex),
+    question: questionText,
+    type,
+    required: raw?.required !== false,
+    placeholder: normalizeQuestionText(raw?.placeholder) || undefined,
+    options: type === 'boolean' ? ['True', 'False'] : undefined,
+    answer: normalizeQuestionText(raw?.answer ?? raw?.a) || undefined,
+    correctAnswer: typeof raw?.correct_answer === 'boolean' ? raw.correct_answer : undefined,
+    sessionId: normalizeQuestionText(raw?.sessionId) || sessionId || undefined,
+  };
+}
+
+export function normalizeGeneratedQuestions(rawQuestions: unknown): GeneratedQuestion[] {
+  if (!Array.isArray(rawQuestions)) return [];
+
+  return rawQuestions
+    .map((rawQuestion, index) => normalizeGeneratedQuestion(rawQuestion, index))
+    .filter((question): question is GeneratedQuestion => question !== null);
+}
+
 /**
  * Generate questions from a document file using streaming
  * @param file - PDF or image file to analyze
@@ -49,6 +100,8 @@ export async function streamGenerateQuestions(
   numQuestions: number = 5,
   onEvent: (type: string, data: any) => void
 ): Promise<void> {
+  const endTotal = perf.start('QA Stream Generate (total)', PerfCategory.QA_API, { fileName: file.name, numQuestions });
+
   try {
     const formData = new FormData();
     formData.append('file', file);
@@ -57,20 +110,24 @@ export async function streamGenerateQuestions(
     formData.append('ocr_strategy', 'hi_res');
     formData.append('languages', 'eng');
 
+    const endFetch = perf.start('QA Stream Connect', PerfCategory.QA_API);
     const response = await fetch('/api/qa/generate-questions', {
       method: 'POST',
       body: formData,
     });
 
     if (!response.ok) {
+      endFetch('error');
       throw new Error(`Failed to connect to stream: ${response.statusText}`);
     }
+    endFetch('success');
 
     const reader = response.body?.getReader();
     if (!reader) throw new Error('Response body is null');
 
     const decoder = new TextDecoder();
     let buffer = '';
+    let questionCount = 0;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -96,6 +153,7 @@ export async function streamGenerateQuestions(
         if (data) {
           try {
             const jsonData = JSON.parse(data);
+            if (event === 'question') questionCount++;
             onEvent(event, jsonData);
           } catch (e) {
             console.warn('Failed to parse SSE data:', data);
@@ -103,8 +161,10 @@ export async function streamGenerateQuestions(
         }
       }
     }
+    endTotal('success');
   } catch (error) {
     console.error('Streaming Q&A error:', error);
+    endTotal('error');
     onEvent('error', { message: error instanceof Error ? error.message : 'Unknown error' });
   }
 }
@@ -117,7 +177,7 @@ export async function verifyAnswer(
   questionId: string,
   userAnswer: string
 ): Promise<VerificationResult | null> {
-  try {
+  return perf.track('QA Verify Answer', PerfCategory.QA_API, async () => {
     const response = await fetch('/api/qa/verify-answer', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -134,10 +194,7 @@ export async function verifyAnswer(
     }
 
     return await response.json();
-  } catch (error) {
-    console.error('Answer verification error:', error);
-    return null;
-  }
+  }, { questionId });
 }
 
 /**
@@ -155,14 +212,12 @@ export async function generateQuestions(
       if (type === 'info' && data.session_id) {
         sessionId = data.session_id;
       } else if (type === 'question') {
-        questions.push({
-          id: data.question_id || `q${questions.length}`,
-          question: data.question || data.q,
-          type: data.type === 'true_false' ? 'boolean' : 'text',
-          required: true,
-          options: data.type === 'true_false' ? ['True', 'False'] : undefined,
-          sessionId: sessionId
-        });
+        const normalizedQuestion = normalizeGeneratedQuestion(data, questions.length, sessionId);
+        if (normalizedQuestion) {
+          questions.push(normalizedQuestion);
+        } else {
+          console.warn('Skipping malformed generated question:', data);
+        }
       } else if (type === 'done') {
         resolve(questions);
       } else if (type === 'error') {
@@ -177,7 +232,8 @@ export async function generateQuestions(
  */
 export function storeGeneratedQuestions(questions: GeneratedQuestion[]): void {
   try {
-    sessionStorage.setItem('generatedQuestions', JSON.stringify(questions));
+    const normalizedQuestions = normalizeGeneratedQuestions(questions);
+    sessionStorage.setItem('generatedQuestions', JSON.stringify(normalizedQuestions));
   } catch (error) {
     console.error('Failed to store generated questions:', error);
   }
@@ -190,7 +246,7 @@ export function getGeneratedQuestions(): GeneratedQuestion[] | null {
   try {
     const stored = sessionStorage.getItem('generatedQuestions');
     if (!stored) return null;
-    return JSON.parse(stored);
+    return normalizeGeneratedQuestions(JSON.parse(stored));
   } catch (error) {
     console.error('Failed to retrieve generated questions:', error);
     return null;

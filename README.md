@@ -64,7 +64,7 @@ EviBlock offers three security tiers to match your document's importance:
 | Tier | Description | KYC Required | Video Verification | AI Questions | IPFS Upload Timing | Use Cases |
 |------|-------------|--------------|-------------------|--------------|-------------------|-----------|
 | **Simple** | Basic storage | Mini-KYC only | ❌ No | ❌ No | Immediate | Personal notes, drafts |
-| **Evidence** | Identity-linked | ✅ Full KYC | ✅ Yes | ❌ No | Immediate | Contracts, agreements |
+| **Evidence** | Identity-linked | ✅ Full KYC | ✅ Yes | ❌ No | After video verification | Contracts, agreements |
 | **Legal** | Government-grade | ✅ Full KYC | ✅ Yes | ✅ Yes | **After Q&A verification** | Legal docs, certificates |
 
 ### 🎯 Core Features
@@ -73,13 +73,14 @@ EviBlock offers three security tiers to match your document's importance:
 - **🔒 AES-256-GCM Encryption**: All KYC data encrypted with unique UID+CID keys
 - **🔑 Secure Key Derivation**: Encryption keys derived from user ID + document CID
 - **⏱️ Session Management**: Auto-expiring encrypted sessions (30 minutes inactivity timeout)
-- **🧹 Auto-Cleanup**: Sensitive data cleared on page unload and completion
+- **🧹 Auto-Cleanup**: Sensitive data cleared on reload, idle timeout, page unload, and completion
 
 #### Document Verification
 - **🎥 Video KYC Verification**: Record video proof linking documents to your identity
 - **🤖 AI-Generated Questions**: Legal documents verified with questions extracted from content
 - **📊 Multi-Format Support**: Supports both Q&A and True/False questions
 - **🔀 Question Randomization**: Questions shuffled for security
+- **🛡️ Safe Question Rendering**: Invalid or blank Q&A payloads are filtered before display
 
 #### Storage & Blockchain
 - **📦 IPFS Storage**: Decentralized file storage via Pinata
@@ -176,11 +177,12 @@ sequenceDiagram
     
     U->>F: Upload Document
     F->>F: Full KYC
-    F->>I: Upload to IPFS
-    I-->>F: Return CID
+    F->>IDB: Store File Locally
     U->>F: Record Video
     F->>IDB: Store Video
     F->>F: Hash Video
+    F->>I: Upload Document to IPFS
+    I-->>F: Return CID
     F->>FS: Upload Video
     FS-->>F: Video URL
     F->>BC: Store Doc + Video
@@ -264,7 +266,8 @@ stateDiagram-v2
     CheckActivity --> ActiveSession: Activity < 30min
     CheckActivity --> SessionExpired: Activity > 30min
     SessionExpired --> ClearData: Auto-cleanup
-    ClearData --> [*]
+    ClearData --> RestartFlow: Redirect to document selection
+    RestartFlow --> [*]
     ActiveSession --> ManualLogout
     ManualLogout --> ClearData
 ```
@@ -394,7 +397,7 @@ stateDiagram-v2
 
 ### 🟢 Simple Documents
 - **Purpose**: Quick storage without identity verification
-- **Requirements**: Mini-KYC (name, email)
+- **Requirements**: Mini-KYC (name, email, phone)
 - **Process**: Upload → IPFS → Blockchain → Done (< 1 minute)
 - **Use Cases**: Personal notes, drafts, non-sensitive documents
 - **Storage**: Immediate IPFS upload
@@ -402,9 +405,9 @@ stateDiagram-v2
 ### 🟡 Evidence Documents  
 - **Purpose**: Identity-linked document storage
 - **Requirements**: Full KYC + Video Verification
-- **Process**: KYC → Upload → IPFS → Video → Blockchain (~ 3-5 minutes)
+- **Process**: KYC → Local Upload Cache → Video → IPFS → Blockchain (~ 3-5 minutes)
 - **Use Cases**: Contracts, agreements, business documents
-- **Storage**: Immediate IPFS upload
+- **Storage**: Deferred until video verification succeeds
 
 ### 🔴 Legal Documents
 - **Purpose**: Government-grade verification with AI validation
@@ -540,7 +543,8 @@ const encrypted = await crypto.subtle.encrypt(
 #### Session Security
 - **Timeout**: 30 minutes of inactivity
 - **Storage**: Encrypted in SessionStorage with last activity timestamp
-- **Cleanup**: Automatic on timeout, logout, and page unload
+- **Cleanup**: Automatic on timeout, reload, page unload, and successful completion
+- **Recovery**: Expired or broken mid-flow sessions restart from document selection
 - **Scope**: Session-only (cleared on browser close)
 
 #### Video Integrity
